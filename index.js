@@ -10,6 +10,8 @@ const server = http.createServer(app);
 // Cấu hình CORS
 app.use(cors());
 
+let logs = [];
+
 // Cấu hình Socket.IO với CORS
 const io = new Server(server, {
   cors: {
@@ -20,32 +22,37 @@ const io = new Server(server, {
 
 // Routes cơ bản
 app.get('/', (req, res) => {
-  res.send('FastShip HU Socket.IO Server đang hoạt động!');
+  res.send('FastShip HU Socket.IO Server đang hoạt động!\n\n' + logs.join('\n'));
 });
 
 // Xử lý kết nối Socket.IO
 io.on('connection', (socket) => {
+  logs.push(`Người dùng đã kết nối: ${socket.id}`);
   console.log(`Người dùng đã kết nối: ${socket.id}`);
 
   // Xử lý sự kiện từ client
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
+    logs.push(`User ${socket.id} joined room: ${roomId}`);
     console.log(`User ${socket.id} joined room: ${roomId}`);
   });
 
   socket.on('leave_room', (roomId) => {
     socket.leave(roomId);
+    logs.push(`User ${socket.id} left room: ${roomId}`);
     console.log(`User ${socket.id} left room: ${roomId}`);
   });
 
   socket.on('send_message', (data) => {
     console.log('Tin nhắn nhận được:', data);
+    logs.push(`User ${socket.id} sent message: ${data.message}`);
     // Gửi tin nhắn đến tất cả người dùng trong phòng ngoại trừ người gửi
     socket.to(data.room).emit('receive_message', data);
   });
 
   // Xử lý ngắt kết nối
   socket.on('disconnect', () => {
+    logs.push(`Người dùng đã ngắt kết nối: ${socket.id}`);
     console.log(`Người dùng đã ngắt kết nối: ${socket.id}`);
   });
 });
