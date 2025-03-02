@@ -14,4 +14,5 @@ RUN apk add --no-cache wget
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:pm2"] 
+# Khởi động ứng dụng trực tiếp với Node.js
+CMD ["node", "index.js"] 

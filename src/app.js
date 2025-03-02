@@ -1,8 +1,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { createAdapter } = require('socket.io-redis');
-const { createClient } = require('redis');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -17,35 +15,19 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-// Cấu hình Redis cho Socket.IO
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || 6379;
-
-// Tạo Redis client
-const pubClient = createClient({
-  url: `redis://${REDIS_HOST}:${REDIS_PORT}`
-});
-const subClient = pubClient.duplicate();
-
-// Xử lý lỗi Redis
-pubClient.on('error', (err) => {
-  console.error('Redis Client Error:', err);
-});
-
-// Cấu hình Socket.IO với CORS và Redis adapter
-const io = new Server(server, {
-  cors: {
-    origin: '*', // Cho phép tất cả các nguồn (trong môi trường production nên hạn chế hơn)
-    methods: ['GET', 'POST'],
-  },
-  adapter: createAdapter({ pubClient, subClient })
-});
-
 // Đảm bảo thư mục logs tồn tại
 const logsDir = path.join(__dirname, '../logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Cấu hình Socket.IO với CORS
+const io = new Server(server, {
+  cors: {
+    origin: '*', // Cho phép tất cả các nguồn (trong môi trường production nên hạn chế hơn)
+    methods: ['GET', 'POST'],
+  },
+});
 
 // Thiết lập Socket.IO events
 const { logs } = setupSocketEvents(io);
@@ -71,11 +53,10 @@ const PORT = process.env.PORT || 3000;
 const serverInstance = server.listen(PORT, () => {
   console.log(`Server đang chạy trên cổng ${PORT}`);
   console.log(`Môi trường: ${process.env.NODE_ENV}`);
-  console.log(`Redis: ${REDIS_HOST}:${REDIS_PORT}`);
 });
 
 // Xử lý graceful shutdown
-const gracefulShutdown = async (signal) => {
+const gracefulShutdown = (signal) => {
   console.log(`Nhận tín hiệu ${signal}, đóng server...`);
 
   // Ghi log sự kiện shutdown
@@ -89,18 +70,7 @@ const gracefulShutdown = async (signal) => {
     // Đóng kết nối Socket.IO
     io.close(() => {
       console.log('Socket.IO server đã đóng');
-
-      // Đóng kết nối Redis
-      Promise.all([
-        pubClient.quit(),
-        subClient.quit()
-      ]).then(() => {
-        console.log('Redis connections đã đóng');
-        process.exit(0);
-      }).catch(err => {
-        console.error('Lỗi khi đóng Redis connections:', err);
-        process.exit(1);
-      });
+      process.exit(0);
     });
   });
 

@@ -262,29 +262,28 @@ Hệ thống FastShip HU Socket Server đã được thiết kế để xử lý
 - **Vấn đề**: Mất tất cả kết nối socket hiện tại, trạng thái của tài xế và đơn hàng có thể bị mất.
 - **Giải pháp đã triển khai**:
   - Docker với chính sách `restart: unless-stopped` để tự động khởi động lại container khi VPS khởi động.
-  - Redis để lưu trữ trạng thái phiên và dữ liệu Socket.IO.
-  - PM2 để quản lý quy trình Node.js và tự động khởi động lại khi gặp sự cố.
+  - Thiết lập file logging để lưu lại thông tin quan trọng trước khi gián đoạn.
+  - Xử lý graceful shutdown để đảm bảo đóng ứng dụng một cách an toàn khi có tín hiệu từ hệ thống.
 
 #### 6.1.2. Sự cố mạng tạm thời
 - **Vấn đề**: Mất kết nối socket tạm thời, thông tin vị trí tài xế không được cập nhật.
 - **Giải pháp đã triển khai**:
-  - Cơ chế ping/pong để kiểm tra kết nối định kỳ (cấu hình: pingTimeout = 10s, pingInterval = 5s).
   - Xử lý ngắt kết nối với thông tin chi tiết về lý do và thời gian kết nối.
   - Ghi log đầy đủ để theo dõi và phân tích sự cố.
+  - Cơ chế kết nối lại ở phía client.
 
 #### 6.1.3. Quá tải hệ thống
 - **Vấn đề**: Server không đáp ứng hoặc phản hồi chậm khi có nhiều kết nối.
 - **Giải pháp đã triển khai**:
   - Giới hạn tài nguyên container (CPU: 0.5, Memory: 512MB) để tránh quá tải VPS.
-  - Theo dõi số lượng kết nối đang hoạt động mỗi phút.
-  - Redis adapter cho Socket.IO để hỗ trợ mở rộng theo chiều ngang (horizontal scaling).
+  - Theo dõi số lượng kết nối đang hoạt động thông qua logs.
 
 #### 6.1.4. Lỗi ứng dụng (crash)
 - **Vấn đề**: Lỗi không xử lý làm crash ứng dụng Node.js.
 - **Giải pháp đã triển khai**:
-  - PM2 để tự động khởi động lại ứng dụng khi crash.
   - Xử lý toàn diện cho các lỗi không lường trước (uncaughtException, unhandledRejection).
   - Ghi log chi tiết về lỗi để dễ dàng điều tra và khắc phục.
+  - Docker sẽ tự động khởi động lại container khi ứng dụng bị crash.
 
 ### 6.2. Cơ chế Graceful Shutdown
 
@@ -292,9 +291,8 @@ Hệ thống đã triển khai cơ chế graceful shutdown để đảm bảo đ
 
 1. Đóng server HTTP
 2. Đóng kết nối Socket.IO
-3. Đóng kết nối Redis
-4. Ghi log sự kiện shutdown
-5. Thoát quy trình một cách an toàn
+3. Ghi log sự kiện shutdown
+4. Thoát quy trình một cách an toàn
 
 Cơ chế này giúp:
 - Tránh mất dữ liệu đang xử lý
@@ -320,14 +318,10 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
     volumes:
       - ./:/app
       - ./logs:/app/logs
       - /app/node_modules
-    depends_on:
-      - redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
@@ -340,22 +334,6 @@ services:
         limits:
           cpus: '0.5'
           memory: 512M
-
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  redis-data:
 ```
 
 #### 6.3.2. Dockerfile
@@ -376,7 +354,7 @@ RUN apk add --no-cache wget
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:pm2"]
+CMD ["node", "index.js"]
 ```
 
 ### 6.4. Hướng dẫn khắc phục sự cố
@@ -401,10 +379,7 @@ docker inspect --format "{{json .State.Health }}" fastship-hu-socket_socket-serv
 
 #### 6.4.3. Khởi động lại dịch vụ
 ```bash
-# Khởi động lại toàn bộ dịch vụ
-docker-compose restart
-
-# Khởi động lại chỉ socket server
+# Khởi động lại dịch vụ
 docker-compose restart socket-server
 ```
 
@@ -459,38 +434,35 @@ socket.on('connect', () => {
 ```javascript
 // Kiểm tra kết nối mỗi 30 giây
 setInterval(() => {
-  const start = Date.now();
-  
-  socket.emit('ping_server', null, () => {
-    const latency = Date.now() - start;
-    console.log(`Độ trễ hiện tại: ${latency}ms`);
-  });
+  if (socket.connected) {
+    const start = Date.now();
+    socket.emit('ping_server', null, () => {
+      const latency = Date.now() - start;
+      console.log(`Độ trễ hiện tại: ${latency}ms`);
+    });
+  }
 }, 30000);
 ```
 
-### 6.6. Kế hoạch mở rộng trong tương lai
+### 6.6. Lưu ý về khả năng mở rộng
 
-Để cải thiện khả năng chịu lỗi và mở rộng của hệ thống, các kế hoạch sau đây được đề xuất:
+Trong kiến trúc hiện tại, chúng ta đã loại bỏ Redis và PM2, điều này có nghĩa là:
 
-1. **Triển khai Docker Swarm hoặc Kubernetes**:
-   - Tự động phục hồi container khi gặp sự cố
-   - Cân bằng tải giữa nhiều instance
-   - Mở rộng tự động dựa trên tải
+1. **Mất trạng thái khi restart**: Khi server restart, tất cả dữ liệu trong bộ nhớ sẽ bị mất. Để giảm thiểu vấn đề này, bạn nên:
+   - Thêm một cơ sở dữ liệu bền vững (MongoDB, PostgreSQL) để lưu trữ trạng thái quan trọng
+   - Cài đặt cơ chế đồng bộ dữ liệu theo chu kỳ
 
-2. **Cải thiện lưu trữ dữ liệu**:
-   - Thêm cơ sở dữ liệu bền vững (MongoDB, PostgreSQL)
-   - Sao lưu dữ liệu Redis định kỳ
-   - Triển khai Redis Sentinel hoặc Redis Cluster
+2. **Giới hạn mở rộng**: Ứng dụng sẽ chỉ chạy trên một instance duy nhất. Nếu cần mở rộng:
+   - Cài đặt một cơ sở dữ liệu bên ngoài
+   - Sử dụng load balancer với sticky sessions
 
-3. **Giám sát và cảnh báo**:
-   - Thêm Prometheus và Grafana để giám sát hệ thống
-   - Thiết lập cảnh báo khi phát hiện vấn đề
-   - Theo dõi hiệu suất và tài nguyên hệ thống
+3. **Phục hồi sau lỗi**: Docker sẽ tự động khởi động lại container khi có lỗi, nhưng:
+   - Cần có cơ chế phục hồi trạng thái hoặc tái tạo từ dữ liệu lưu trữ bền vững
+   - Client cần có khả năng tự động kết nối lại và xử lý trường hợp mất kết nối
 
-4. **Cải thiện bảo mật**:
-   - Giới hạn CORS cho các nguồn cụ thể
-   - Thêm xác thực JWT cho kết nối socket
-   - Mã hóa dữ liệu nhạy cảm
+Nếu lưu lượng truy cập hoặc yêu cầu khả năng mở rộng tăng cao trong tương lai, bạn có thể cân nhắc:
+1. Tái triển khai Redis để hỗ trợ nhiều instance và lưu trữ trạng thái
+2. Sử dụng PM2 hoặc orchestration tool khác (Kubernetes) để quản lý quy trình và mở rộng
 
 ## 7. Kết luận
 
