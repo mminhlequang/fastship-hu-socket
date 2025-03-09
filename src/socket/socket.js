@@ -2,6 +2,7 @@ const driverController = require('../controllers/DriverController');
 const orderController = require('../controllers/OrderController');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 /**
  * Thiết lập các sự kiện Socket.IO
@@ -45,7 +46,72 @@ const setupSocketEvents = (io) => {
     // Lưu thời gian kết nối
     socket.connectionTime = new Date();
 
-    // Đăng ký tài xế
+    // Xác thực tài xế bằng accessToken
+    socket.on('authenticate_driver', async (data) => {
+      try {
+        if (!data.token) {
+          throw new Error('Không có token xác thực');
+        }
+
+        logEvent(`Xác thực tài xế: ${socket.id} - token: ${data.token.substring(0, 10)}...`);
+
+        // Lưu token vào socket để sử dụng sau này
+        socket.accessToken = data.token;
+
+        // Lấy thông tin tài xế từ API
+        try {
+          const profileResponse = await axios.get('https://zennail23.com/api/v1/profile', {
+            headers: {
+              'Authorization': `Bearer ${data.token}`,
+              'X-CSRF-TOKEN': '',
+              'accept': '*/*'
+            }
+          });
+
+          const walletResponse = await axios.get('https://zennail23.com/api/v1/transaction/get_my_wallet?currency=eur', {
+            headers: {
+              'Authorization': `Bearer ${data.token}`,
+              'X-CSRF-TOKEN': '',
+              'accept': '*/*'
+            }
+          });
+
+          // Lưu thông tin driver vào socket
+          socket.driverData = {
+            profile: profileResponse.data,
+            wallet: walletResponse.data,
+            uuid: profileResponse.data.id || profileResponse.data.uuid
+          };
+
+          // Đăng ký tài xế với hệ thống
+          await driverController.handleDriverConnect(socket, socket.driverData);
+
+          // Thông báo kết nối thành công cho client
+          socket.emit('authentication_success', {
+            message: 'Xác thực thành công',
+            driverId: socket.driverData.uuid,
+            profile: profileResponse.data,
+            wallet: walletResponse.data,
+            timestamp: new Date().toISOString()
+          });
+
+          logEvent(`Xác thực thành công cho tài xế: ${socket.driverData.uuid}`);
+        } catch (apiError) {
+          logEvent(`Lỗi khi gọi API: ${apiError.message}`);
+          socket.emit('authentication_error', {
+            message: 'Lỗi khi xác thực với API: ' + apiError.message
+          });
+          throw apiError;
+        }
+      } catch (error) {
+        logEvent(`Lỗi khi xác thực tài xế: ${error.message}`);
+        socket.emit('authentication_error', {
+          message: 'Lỗi khi xác thực: ' + error.message
+        });
+      }
+    });
+
+    // Đăng ký tài xế (giữ lại để tương thích ngược)
     socket.on('register_driver', async (data) => {
       try {
         logEvent(`Đăng ký tài xế: ${socket.id} - ${data.uuid}`);
@@ -69,12 +135,49 @@ const setupSocketEvents = (io) => {
     // Cập nhật vị trí tài xế
     socket.on('update_location', async (data) => {
       try {
-        await driverController.handleUpdateLocation(socket, data);
+        const location = await driverController.handleUpdateLocation(socket, data);
         // Cập nhật thời gian hoạt động cuối cùng
         socket.lastActive = new Date();
+
+        // Phản hồi cho client biết vị trí đã được cập nhật
+        socket.emit('location_updated', {
+          status: 'success',
+          location,
+          timestamp: new Date().toISOString()
+        });
       } catch (error) {
         logEvent(`Lỗi khi cập nhật vị trí tài xế ${socket.id}: ${error.message}`);
         socket.emit('error', { message: 'Lỗi khi cập nhật vị trí: ' + error.message });
+      }
+    });
+
+    // Cập nhật trạng thái tài xế (online/offline)
+    socket.on('driver_status_update', async (data) => {
+      try {
+        const status = data.status === 'online' ? 'online' : 'offline';
+        logEvent(`Tài xế ${socket.id} cập nhật trạng thái: ${status}`);
+
+        if (socket.driverData) {
+          // Cập nhật trạng thái trong driverController
+          await driverController.handleDriverStatusUpdate(socket, {
+            uuid: socket.driverData.uuid,
+            status: status
+          });
+
+          // Cập nhật thời gian hoạt động cuối cùng
+          socket.lastActive = new Date();
+
+          // Phản hồi cho client
+          socket.emit('driver_status_updated', {
+            status: status,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          throw new Error('Tài xế chưa đăng ký');
+        }
+      } catch (error) {
+        logEvent(`Lỗi khi cập nhật trạng thái tài xế ${socket.id}: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi cập nhật trạng thái: ' + error.message });
       }
     });
 

@@ -36,6 +36,45 @@ class DriverController {
   }
 
   /**
+   * Xử lý cập nhật trạng thái của tài xế (online/offline)
+   * @param {Object} socket - Socket.IO socket
+   * @param {Object} data - Dữ liệu trạng thái
+   */
+  handleDriverStatusUpdate (socket, data) {
+    try {
+      const { uuid, status } = data;
+
+      if (!uuid) {
+        socket.emit('error', { message: 'UUID là bắt buộc' });
+        return null;
+      }
+
+      // Kiểm tra tài xế có tồn tại không
+      const driver = driverService.getDriverByUuid(uuid);
+      if (!driver) {
+        socket.emit('error', { message: 'Tài xế không tồn tại' });
+        return null;
+      }
+
+      // Cập nhật trạng thái online/offline
+      if (status === 'online') {
+        driverService.setDriverOnline(uuid);
+        console.log(`Tài xế đã online: ${uuid} (${socket.id})`);
+      } else {
+        driverService.setDriverOffline(uuid);
+        console.log(`Tài xế đã offline: ${uuid} (${socket.id})`);
+      }
+
+      return driver;
+    } catch (error) {
+      console.error('Lỗi khi cập nhật trạng thái tài xế:', error);
+      socket.emit('error', { message: 'Lỗi server' });
+    }
+
+    return null;
+  }
+
+  /**
    * Xử lý khi tài xế ngắt kết nối
    * @param {string} socketId - ID socket của tài xế
    */
