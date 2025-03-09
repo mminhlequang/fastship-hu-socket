@@ -43,6 +43,11 @@ app.get('/', (req, res) => {
   res.send('FastShip HU Socket.IO Server đang hoạt động!');
 });
 
+app.get('/logs/clear', (req, res) => {
+  fs.writeFileSync(path.join(logsDir, 'socket.log'), '');
+  res.send('Logs đã được xóa!');
+});
+
 app.get('/logs', (req, res) => {
   const logs = fs.readFileSync(path.join(logsDir, 'socket.log'), 'utf8');
   const logLines = logs.split('\n');
@@ -50,7 +55,7 @@ app.get('/logs', (req, res) => {
     .map(line => `<div>${line}</div>`)
     .join('');
   res.send(`<html><body style="font-family: monospace;">${htmlLogs}</body></html>`);
-});
+}); 
 
 
 // Route kiểm tra sức khỏe
