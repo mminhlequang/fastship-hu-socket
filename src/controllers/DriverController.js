@@ -100,15 +100,15 @@ class DriverController {
         return null;
       }
 
-      const { lat, lng } = data;
+      const { lat: latitude, lng: longitude } = data;
 
-      if (typeof lat !== 'number' || typeof lng !== 'number') {
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
         socket.emit('error', { message: 'Vị trí không hợp lệ' });
         return null;
       }
 
       // Cập nhật vị trí
-      const location = driverService.updateDriverLocation(driver.driverData.uid, lat, lng);
+      const location = driverService.updateDriverLocation(driver.driverData.uid, latitude, longitude);
 
       // Phát sóng vị trí mới đến kênh cụ thể của tài xế
       // Những client đang nghe kênh này sẽ nhận được cập nhật vị trí mới
