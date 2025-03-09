@@ -30,7 +30,7 @@ const io = new Server(server, {
 });
 
 // Thiết lập Socket.IO events
-const { logs } = setupSocketEvents(io);
+setupSocketEvents(io);
 
 // Lưu instance io vào app để sử dụng trong các route
 app.set('io', io);
@@ -40,8 +40,18 @@ app.use('/api', apiRoutes);
 
 // Route cơ bản
 app.get('/', (req, res) => {
-  res.send('FastShip HU Socket.IO Server đang hoạt động!\n\n' + logs.join('\n'));
+  res.send('FastShip HU Socket.IO Server đang hoạt động!');
 });
+
+app.get('/logs', (req, res) => {
+  const logs = fs.readFileSync(path.join(logsDir, 'socket.log'), 'utf8');
+  const logLines = logs.split('\n');
+  const htmlLogs = logLines
+    .map(line => `<div>${line}</div>`)
+    .join('');
+  res.send(`<html><body style="font-family: monospace;">${htmlLogs}</body></html>`);
+});
+
 
 // Route kiểm tra sức khỏe
 app.get('/health', (req, res) => {

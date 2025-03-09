@@ -2,13 +2,8 @@
  * Model lưu trữ thông tin tài xế
  */
 class Driver {
-  constructor (uuid, phone, name, firebaseId, rate, walletInfo) {
-    this.uuid = uuid; // ID duy nhất của tài xế
-    this.phone = phone; // Số điện thoại
-    this.name = name; // Tên tài xế
-    this.firebaseId = firebaseId; // ID Firebase
-    this.rate = rate || 0; // Đánh giá (mặc định là 0)
-    this.walletInfo = walletInfo || { balance: 0 }; // Thông tin ví
+  constructor (driverData) {
+    this.driverData = driverData; // ID duy nhất của tài xế 
     this.isOnline = true; // Trạng thái online
     this.socketId = null; // ID socket hiện tại
     this.location = null; // Vị trí hiện tại (lat, lng)

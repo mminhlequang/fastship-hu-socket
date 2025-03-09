@@ -29,12 +29,10 @@ router.delete('/orders/:orderId', (req, res) => {
 router.get('/drivers/online', (req, res) => {
   try {
     const drivers = driverController.getOnlineDrivers().map(driver => ({
-      uuid: driver.uuid,
-      name: driver.name,
-      phone: driver.phone,
-      rate: driver.rate,
+      info: driver.driverData,
       location: driver.location,
-      lastActive: driver.lastActive
+      lastActive: driver.lastActive, 
+      isBusy: driver.isBusy
     }));
 
     res.status(200).json({
@@ -53,11 +51,11 @@ router.get('/drivers/online', (req, res) => {
 
 /**
  * API lấy thông tin tài xế theo UUID
- * GET /api/drivers/:uuid
+ * GET /api/drivers/:uid
  */
-router.get('/drivers/:uuid', (req, res) => {
+router.get('/drivers/:uid', (req, res) => {
   try {
-    const driver = driverController.getDriverByUuid(req.params.uuid);
+    const driver = driverController.getDriverByUuid(req.params.uid);
 
     if (!driver) {
       return res.status(404).json({
@@ -69,10 +67,7 @@ router.get('/drivers/:uuid', (req, res) => {
     res.status(200).json({
       success: true,
       driver: {
-        uuid: driver.uuid,
-        name: driver.name,
-        phone: driver.phone,
-        rate: driver.rate,
+        info: driver.driverData,
         isOnline: driver.isOnline,
         isBusy: driver.isBusy,
         location: driver.location,
@@ -80,7 +75,7 @@ router.get('/drivers/:uuid', (req, res) => {
       }
     });
   } catch (error) {
-    console.error(`Lỗi khi lấy thông tin tài xế ${req.params.uuid}:`, error);
+    console.error(`Lỗi khi lấy thông tin tài xế ${req.params.uid}:`, error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server'

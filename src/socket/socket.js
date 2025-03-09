@@ -9,12 +9,10 @@ const axios = require('axios');
  * @param {Object} io - Socket.IO server instance
  */
 const setupSocketEvents = (io) => {
-  // Lưu logs
-  const logs = [];
+  // Xử lý ghi log
   const logEvent = (message) => {
     const timestamp = new Date().toISOString();
     const logMessage = `[${timestamp}] ${message}`;
-    logs.push(logMessage);
     console.log(logMessage);
 
     // Ghi log vào file
@@ -23,11 +21,6 @@ const setupSocketEvents = (io) => {
       fs.appendFileSync(path.join(logsDir, 'socket.log'), logMessage + '\n');
     } catch (error) {
       console.error('Lỗi khi ghi log:', error);
-    }
-
-    // Giới hạn số lượng logs trong bộ nhớ
-    if (logs.length > 1000) {
-      logs.shift();
     }
   };
 
@@ -80,22 +73,22 @@ const setupSocketEvents = (io) => {
           socket.driverData = {
             profile: profileResponse.data,
             wallet: walletResponse.data,
-            uuid: profileResponse.data.id || profileResponse.data.uuid
+            uid: profileResponse.data.uid
           };
 
           // Đăng ký tài xế với hệ thống
-          await driverController.handleDriverConnect(socket, socket.driverData);
+          await driverController.handleDriverConnect(socket);
 
           // Thông báo kết nối thành công cho client
           socket.emit('authentication_success', {
             message: 'Xác thực thành công',
-            driverId: socket.driverData.uuid,
+            driverId: socket.driverData.uid,
             profile: profileResponse.data,
             wallet: walletResponse.data,
             timestamp: new Date().toISOString()
           });
 
-          logEvent(`Xác thực thành công cho tài xế: ${socket.driverData.uuid}`);
+          logEvent(`Xác thực thành công cho tài xế: ${socket.driverData.uid}`);
         } catch (apiError) {
           logEvent(`Lỗi khi gọi API: ${apiError.message}`);
           socket.emit('authentication_error', {
@@ -108,27 +101,6 @@ const setupSocketEvents = (io) => {
         socket.emit('authentication_error', {
           message: 'Lỗi khi xác thực: ' + error.message
         });
-      }
-    });
-
-    // Đăng ký tài xế (giữ lại để tương thích ngược)
-    socket.on('register_driver', async (data) => {
-      try {
-        logEvent(`Đăng ký tài xế: ${socket.id} - ${data.uuid}`);
-        await driverController.handleDriverConnect(socket, data);
-
-        // Lưu thông tin tài xế vào socket để dễ dàng truy cập khi disconnect
-        socket.driverData = data;
-
-        // Thông báo kết nối thành công cho client
-        socket.emit('connection_success', {
-          message: 'Kết nối thành công',
-          driverId: data.uuid,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        logEvent(`Lỗi khi đăng ký tài xế ${data.uuid}: ${error.message}`);
-        socket.emit('error', { message: 'Lỗi khi đăng ký: ' + error.message });
       }
     });
 
@@ -160,7 +132,7 @@ const setupSocketEvents = (io) => {
         if (socket.driverData) {
           // Cập nhật trạng thái trong driverController
           await driverController.handleDriverStatusUpdate(socket, {
-            uuid: socket.driverData.uuid,
+            uid: socket.driverData.uid,
             status: status
           });
 
@@ -240,14 +212,14 @@ const setupSocketEvents = (io) => {
         const driver = await driverController.handleDriverDisconnect(socket.id);
 
         if (driver) {
-          logEvent(`Tài xế ${driver.uuid} đã ngắt kết nối (${socket.id}). Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);
+          logEvent(`Tài xế ${driver.uid} đã ngắt kết nối (${socket.id}). Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);
 
           // Lưu trạng thái tài xế vào cơ sở dữ liệu (nếu có)
           try {
             // Giả sử có driverService
-            // await driverService.updateDriverStatus(driver.uuid, 'offline');
+            // await driverService.updateDriverStatus(driver.uid, 'offline');
           } catch (dbError) {
-            logEvent(`Lỗi khi cập nhật trạng thái tài xế ${driver.uuid}: ${dbError.message}`);
+            logEvent(`Lỗi khi cập nhật trạng thái tài xế ${driver.uid}: ${dbError.message}`);
           }
         } else {
           logEvent(`Socket ${socket.id} đã ngắt kết nối. Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);
@@ -262,8 +234,6 @@ const setupSocketEvents = (io) => {
   setInterval(() => {
     logEvent(`Thống kê: ${connectionCount} kết nối đang hoạt động`);
   }, 60000); // Mỗi phút
-
-  return { logs };
 };
 
 module.exports = setupSocketEvents; 

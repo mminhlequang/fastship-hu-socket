@@ -7,72 +7,68 @@ class DriverService {
   }
 
   // Thêm hoặc cập nhật thông tin tài xế
-  registerDriver (uuid, phone, name, firebaseId, rate, walletInfo, socketId) {
+  registerDriver (socket) {
+    const driverData = socket.driverData;
     // Nếu tài xế đã tồn tại, cập nhật thông tin
-    if (this.drivers[uuid]) {
-      const driver = this.drivers[uuid];
+    if (this.drivers[driverData.uid]) {
+      const driver = this.drivers[driverData.uid];
 
-      // Cập nhật thông tin cơ bản nếu có thay đổi
-      if (phone) driver.phone = phone;
-      if (name) driver.name = name;
-      if (firebaseId) driver.firebaseId = firebaseId;
-      if (rate !== undefined) driver.rate = rate;
-      if (walletInfo) driver.walletInfo = walletInfo;
+      driver.driverData = driverData;
 
       // Đặt trạng thái online và cập nhật socketId
       driver.setOnlineStatus(true);
-      if (socketId) {
+      if (socket.id) {
         // Xóa mapping cũ nếu có
         if (driver.socketId && this.socketToDriverMap[driver.socketId]) {
           delete this.socketToDriverMap[driver.socketId];
         }
 
         // Cập nhật socketId mới
-        driver.setSocketId(socketId);
-        this.socketToDriverMap[socketId] = uuid;
+        driver.setSocketId(socket.id);
+        this.socketToDriverMap[socket.id] = driverData.uid;
       }
 
       return driver;
     }
 
     // Tạo mới tài xế nếu chưa tồn tại
-    const driver = new Driver(uuid, phone, name, firebaseId, rate, walletInfo);
-    if (socketId) {
-      driver.setSocketId(socketId);
-      this.socketToDriverMap[socketId] = uuid;
+    const driver = new Driver(driverData);
+    if (socket.id) {
+      driver.setSocketId(socket.id);
+      this.socketToDriverMap[socket.id] = driverData.uid;
     }
 
-    this.drivers[uuid] = driver;
+    this.drivers[driverData.uid] = driver;
     return driver;
   }
 
   // Cập nhật vị trí tài xế
-  updateDriverLocation (uuid, lat, lng) {
-    const driver = this.drivers[uuid];
+  updateDriverLocation (uid, lat, lng) {
+    const driver = this.drivers[uid];
     if (!driver) return null;
 
     return driver.updateLocation(lat, lng);
   }
 
   // Lấy tài xế theo UUID
-  getDriverByUuid (uuid) {
-    return this.drivers[uuid] || null;
+  getDriverByUuid (uid) {
+    return this.drivers[uid] || null;
   }
 
   // Lấy tài xế theo socket ID
   getDriverBySocketId (socketId) {
-    const uuid = this.socketToDriverMap[socketId];
-    if (!uuid) return null;
+    const uid = this.socketToDriverMap[socketId];
+    if (!uid) return null;
 
-    return this.drivers[uuid];
+    return this.drivers[uid];
   }
 
   // Đặt trạng thái offline cho tài xế
   setDriverOffline (socketId) {
-    const uuid = this.socketToDriverMap[socketId];
-    if (!uuid || !this.drivers[uuid]) return false;
+    const uid = this.socketToDriverMap[socketId];
+    if (!uid || !this.drivers[uid]) return false;
 
-    this.drivers[uuid].setOnlineStatus(false);
+    this.drivers[uid].setOnlineStatus(false);
 
     // Xóa mapping socket
     delete this.socketToDriverMap[socketId];
@@ -81,10 +77,10 @@ class DriverService {
   }
 
   // Đặt trạng thái online cho tài xế theo UUID
-  setDriverOnline (uuid) {
-    if (!uuid || !this.drivers[uuid]) return false;
+  setDriverOnline (uid) {
+    if (!uid || !this.drivers[uid]) return false;
 
-    this.drivers[uuid].setOnlineStatus(true);
+    this.drivers[uid].setOnlineStatus(true);
     return true;
   }
 
