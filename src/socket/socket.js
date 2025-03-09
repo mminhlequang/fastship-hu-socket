@@ -88,7 +88,7 @@ const setupSocketEvents = (io) => {
             timestamp: new Date().toISOString()
           });
 
-          logEvent(`Xác thực thành công cho tài xế: ${socket.driverData.uid}`);
+          logEvent(`Xác thực thành công cho tài xế: ${socket.driverData}`);
         } catch (apiError) {
           logEvent(`Lỗi khi gọi API: ${apiError.message}`);
           socket.emit('authentication_error', {
