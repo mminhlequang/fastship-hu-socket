@@ -100,10 +100,10 @@ class DriverController {
         return null;
       }
 
-      const { lat: latitude, lng: longitude } = data;
+      const { latitude, longitude } = data;
 
       if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        socket.emit('error', { message: 'Vị trí không hợp lệ' });
+        socket.emit('error', { message: 'Vị trí không hợp lệ ' + JSON.stringify(data) });
         return null;
       }
 
