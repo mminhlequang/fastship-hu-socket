@@ -69,11 +69,15 @@ const setupSocketEvents = (io) => {
             }
           });
 
+          if (profileResponse.data.status != true && walletResponse.data.status != true) {
+            throw new Error('Không có token xác thực');
+          }
+
           // Lưu thông tin driver vào socket
           socket.driverData = {
-            profile: profileResponse.data,
-            wallet: walletResponse.data,
-            uid: profileResponse.data.uid
+            profile: profileResponse.data.data,
+            wallet: walletResponse.data.data,
+            uid: profileResponse.data.data.uid
           };
 
           // Đăng ký tài xế với hệ thống
