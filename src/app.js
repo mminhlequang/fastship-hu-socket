@@ -15,6 +15,9 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
+// Cấu hình thư mục public để truy cập file trực tiếp
+app.use(express.static(path.join(__dirname, '../public')));
+
 // Đảm bảo thư mục logs tồn tại
 const logsDir = path.join(__dirname, '../logs');
 if (!fs.existsSync(logsDir)) {
@@ -55,7 +58,7 @@ app.get('/logs', (req, res) => {
     .map(line => `<div>${line}</div>`)
     .join('');
   res.send(`<html><body style="font-family: monospace;">${htmlLogs}</body></html>`);
-}); 
+});
 
 
 // Route kiểm tra sức khỏe
