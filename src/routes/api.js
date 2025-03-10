@@ -1,26 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const orderController = require('../controllers/OrderController');
 const driverController = require('../controllers/DriverController');
-
-/**
- * API tạo đơn hàng mới
- * POST /api/orders
- */
-router.post('/orders', (req, res) => {
-  const io = req.app.get('io'); // Lấy instance Socket.IO từ app
-  const result = orderController.createOrder(io, req.body);
-  res.status(result.success ? 200 : 400).json(result);
-});
-
-/**
- * API hủy đơn hàng
- * DELETE /api/orders/:orderId
- */
-router.delete('/orders/:orderId', (req, res) => {
-  const result = orderController.cancelOrder(req.params.orderId);
-  res.status(result.success ? 200 : 400).json(result);
-});
 
 /**
  * API lấy danh sách tài xế online
@@ -31,7 +11,7 @@ router.get('/drivers/online', (req, res) => {
     const drivers = driverController.getOnlineDrivers().map(driver => ({
       info: driver.driverData,
       location: driver.location,
-      lastActive: driver.lastActive, 
+      lastActive: driver.lastActive,
       isBusy: driver.isBusy
     }));
 

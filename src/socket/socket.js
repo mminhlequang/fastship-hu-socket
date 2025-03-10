@@ -1,5 +1,4 @@
 const driverController = require('../controllers/DriverController');
-const orderController = require('../controllers/OrderController');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -154,42 +153,6 @@ const setupSocketEvents = (io) => {
       } catch (error) {
         logEvent(`Lỗi khi cập nhật trạng thái tài xế ${socket.id}: ${error.message}`);
         socket.emit('error', { message: 'Lỗi khi cập nhật trạng thái: ' + error.message });
-      }
-    });
-
-    // Chấp nhận đơn hàng
-    socket.on('accept_order', async (data) => {
-      try {
-        logEvent(`Tài xế ${socket.id} chấp nhận đơn hàng ${data.orderId}`);
-        await orderController.handleAcceptOrder(socket, data);
-      } catch (error) {
-        logEvent(`Lỗi khi chấp nhận đơn hàng ${data.orderId}: ${error.message}`);
-        socket.emit('error', { message: 'Lỗi khi chấp nhận đơn hàng: ' + error.message });
-      }
-    });
-
-    // Từ chối đơn hàng (tự động chuyển sang tài xế tiếp theo)
-    socket.on('reject_order', async (data) => {
-      try {
-        logEvent(`Tài xế ${socket.id} từ chối đơn hàng ${data.orderId}`);
-        const order = await orderController.getOrder(data.orderId);
-        if (order && order.status === 'pending') {
-          await orderController.notifyNextDriver(io, order);
-        }
-      } catch (error) {
-        logEvent(`Lỗi khi từ chối đơn hàng ${data.orderId}: ${error.message}`);
-        socket.emit('error', { message: 'Lỗi khi từ chối đơn hàng: ' + error.message });
-      }
-    });
-
-    // Hoàn thành đơn hàng
-    socket.on('complete_order', async (data) => {
-      try {
-        logEvent(`Tài xế ${socket.id} hoàn thành đơn hàng ${data.orderId}`);
-        await orderController.handleCompleteOrder(socket, data);
-      } catch (error) {
-        logEvent(`Lỗi khi hoàn thành đơn hàng ${data.orderId}: ${error.message}`);
-        socket.emit('error', { message: 'Lỗi khi hoàn thành đơn hàng: ' + error.message });
       }
     });
 

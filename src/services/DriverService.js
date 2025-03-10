@@ -86,47 +86,7 @@ class DriverService {
 
   // Lấy danh sách tài xế đang online
   getOnlineDrivers () {
-    return Object.values(this.drivers).filter(driver => driver.isOnline && !driver.isBusy);
-  }
-
-  // Lấy danh sách tài xế ưu tiên cho đơn hàng theo tiêu chí
-  // rate cao, gần địa chỉ giao hàng, đủ tiền trong ví
-  getPriorityDriversForOrder (deliveryLocation, requiredAmount) {
-    // Lọc tài xế đang online và không bận
-    const availableDrivers = this.getOnlineDrivers();
-
-    // Lọc tài xế có đủ tiền trong ví
-    const eligibleDrivers = availableDrivers.filter(
-      driver => driver.walletInfo && driver.walletInfo.balance >= requiredAmount
-    );
-
-    // Tính toán khoảng cách và xếp hạng
-    const driversWithScore = eligibleDrivers.map(driver => {
-      let score = driver.rate * 10; // Đánh giá có trọng số cao
-
-      // Tính điểm dựa trên khoảng cách nếu tài xế có vị trí
-      if (driver.location && deliveryLocation) {
-        const distance = this.calculateDistance(
-          driver.location.lat,
-          driver.location.lng,
-          deliveryLocation.lat,
-          deliveryLocation.lng
-        );
-
-        // Điểm khoảng cách ngược với khoảng cách (càng gần càng cao)
-        // Điểm tối đa 50 cho khoảng cách gần (dưới 1km)
-        const distanceScore = Math.max(0, 50 - distance * 5);
-        score += distanceScore;
-      }
-
-      return { driver, score };
-    });
-
-    // Sắp xếp theo điểm giảm dần
-    driversWithScore.sort((a, b) => b.score - a.score);
-
-    // Trả về danh sách tài xế đã được sắp xếp
-    return driversWithScore.map(item => item.driver);
+    return Object.values(this.drivers).filter(driver => driver.isOnline);
   }
 
   // Tính khoảng cách giữa hai tọa độ (công thức Haversine)
