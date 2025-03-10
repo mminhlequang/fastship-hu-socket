@@ -1,4 +1,5 @@
 const driverController = require('../controllers/DriverController');
+const orderController = require('../controllers/OrderController');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -107,6 +108,69 @@ const setupSocketEvents = (io) => {
       }
     });
 
+    // Xác thực khách hàng
+    socket.on('authenticate_customer', async (data) => {
+      try {
+        if (!data.customerId) {
+          throw new Error('Không có customerId');
+        }
+
+        logEvent(`Xác thực khách hàng: ${socket.id} - customerId: ${data.customerId}`);
+
+        // Lưu thông tin khách hàng vào socket
+        socket.customerData = {
+          customerId: data.customerId,
+          // Có thể thêm thông tin khác nếu cần
+        };
+
+        // Thêm socket vào room của khách hàng
+        socket.join(`customer_${data.customerId}`);
+
+        // Thông báo kết nối thành công cho client
+        socket.emit('authentication_success', {
+          message: 'Xác thực thành công',
+          customerId: data.customerId,
+          timestamp: new Date().toISOString()
+        });
+
+        logEvent(`Xác thực thành công cho khách hàng: ${data.customerId}`);
+      } catch (error) {
+        logEvent(`Lỗi khi xác thực khách hàng: ${error.message}`);
+        socket.emit('authentication_error', {
+          message: 'Lỗi khi xác thực: ' + error.message
+        });
+      }
+    });
+
+    // Xác thực admin
+    socket.on('authenticate_admin', async (data) => {
+      try {
+        if (!data.adminKey || data.adminKey !== process.env.ADMIN_KEY) {
+          throw new Error('Mã xác thực không hợp lệ');
+        }
+
+        logEvent(`Xác thực admin: ${socket.id}`);
+
+        // Lưu thông tin admin vào socket
+        socket.adminData = {
+          isAdmin: true
+        };
+
+        // Thông báo kết nối thành công cho client
+        socket.emit('authentication_success', {
+          message: 'Xác thực admin thành công',
+          timestamp: new Date().toISOString()
+        });
+
+        logEvent(`Xác thực thành công cho admin`);
+      } catch (error) {
+        logEvent(`Lỗi khi xác thực admin: ${error.message}`);
+        socket.emit('authentication_error', {
+          message: 'Lỗi khi xác thực: ' + error.message
+        });
+      }
+    });
+
     // Cập nhật vị trí tài xế
     socket.on('update_location', async (data) => {
       try {
@@ -155,6 +219,85 @@ const setupSocketEvents = (io) => {
         socket.emit('error', { message: 'Lỗi khi cập nhật trạng thái: ' + error.message });
       }
     });
+
+    // === BẮT ĐẦU CÁC SỰ KIỆN QUẢN LÝ ĐƠN HÀNG ===
+
+    // Tạo đơn hàng mới
+    socket.on('create_order', async (data) => {
+      try {
+        logEvent(`Yêu cầu tạo đơn hàng mới từ ${socket.id}: ${JSON.stringify(data)}`);
+        await orderController.handleCreateOrder(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi tạo đơn hàng: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi tạo đơn hàng: ' + error.message });
+      }
+    });
+
+    // Tìm tài xế cho đơn hàng
+    socket.on('find_driver', async (data) => {
+      try {
+        logEvent(`Yêu cầu tìm tài xế cho đơn hàng ${data.orderId} từ ${socket.id}`);
+        await orderController.findDriverForOrder(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi tìm tài xế: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi tìm tài xế: ' + error.message });
+      }
+    });
+
+    // Phản hồi tài xế về đơn hàng
+    socket.on('driver_order_response', async (data) => {
+      try {
+        logEvent(`Phản hồi đơn hàng ${data.orderId} từ tài xế ${socket.id}: ${data.status}`);
+        await orderController.handleDriverResponse(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi xử lý phản hồi tài xế: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi xử lý phản hồi: ' + error.message });
+      }
+    });
+
+    // Cập nhật trạng thái đơn hàng
+    socket.on('update_order_status', async (data) => {
+      try {
+        logEvent(`Cập nhật trạng thái đơn hàng ${data.orderId} thành ${data.status} từ ${socket.id}`);
+        await orderController.updateOrderStatus(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi cập nhật trạng thái đơn hàng: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi cập nhật trạng thái đơn hàng: ' + error.message });
+      }
+    });
+
+    // Hủy đơn hàng
+    socket.on('cancel_order', async (data) => {
+      try {
+        logEvent(`Yêu cầu hủy đơn hàng ${data.orderId} từ ${socket.id}`);
+        await orderController.cancelOrder(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi hủy đơn hàng: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi hủy đơn hàng: ' + error.message });
+      }
+    });
+
+    // Lấy thông tin đơn hàng
+    socket.on('get_order_info', async (data) => {
+      try {
+        await orderController.getOrderInfo(socket, data);
+      } catch (error) {
+        logEvent(`Lỗi khi lấy thông tin đơn hàng: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi lấy thông tin đơn hàng: ' + error.message });
+      }
+    });
+
+    // Lấy danh sách đơn hàng
+    socket.on('get_orders_list', async (data) => {
+      try {
+        await orderController.getOrdersList(socket, data);
+      } catch (error) {
+        logEvent(`Lỗi khi lấy danh sách đơn hàng: ${error.message}`);
+        socket.emit('error', { message: 'Lỗi khi lấy danh sách đơn hàng: ' + error.message });
+      }
+    });
+
+    // === KẾT THÚC CÁC SỰ KIỆN QUẢN LÝ ĐƠN HÀNG ===
 
     // Kiểm tra kết nối
     socket.on('ping_server', () => {
