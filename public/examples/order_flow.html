@@ -18,10 +18,13 @@
       max-width: 1200px;
       margin: 0 auto;
       gap: 20px;
+      flex-wrap: wrap;
     }
 
     .panel {
-      flex: 1;
+      width: calc(50% - 10px);
+      /* 50% trừ đi nửa khoảng gap */
+      box-sizing: border-box;
       border: 1px solid #ddd;
       border-radius: 5px;
       padding: 15px;
@@ -186,10 +189,63 @@
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const SOCKET_URL = 'http://localhost:3000';
+    // Thay đổi URL kết nối socket để có thể triển khai ở bất kỳ đâu
+    const getSocketURL = () => {
+      // Lấy URL cơ sở từ window.location thay vì hardcode
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+      const host = window.location.hostname;
+      const port = window.location.port || (protocol === 'https:' ? '443' : '80');
+
+      // Kiểm tra nếu đang chạy trên localhost thì dùng 3000, ngược lại dùng port hiện tại
+      const socketPort = host === 'localhost' ? '3000' : port;
+
+      return `${protocol}//${host}:${socketPort}`;
+    };
+
+    const SOCKET_URL = getSocketURL();
     let customerSocket = null;
     let driverSocket = null;
     let currentOrderId = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+
+    // Hàm kết nối lại socket với cơ chế thử lại
+    function reconnectSocket (socketType) {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        const logFn = socketType === 'customer' ? logCustomerEvent : logDriverEvent;
+        logFn('Đã đạt giới hạn kết nối lại. Vui lòng làm mới trang.');
+        return;
+      }
+
+      reconnectAttempts++;
+      const logFn = socketType === 'customer' ? logCustomerEvent : logDriverEvent;
+      const statusId = socketType === 'customer' ? 'customer-status' : 'driver-status';
+
+      logFn(`Đang thử kết nối lại lần ${reconnectAttempts}...`);
+      showStatus(statusId, 'Đang kết nối lại...', false);
+
+      setTimeout(() => {
+        if (socketType === 'customer') {
+          document.getElementById('connect-customer').click();
+        } else {
+          document.getElementById('connect-driver').click();
+        }
+      }, 2000 * reconnectAttempts); // Thời gian chờ tăng dần
+    }
+
+    // Kiểm tra định dạng tọa độ hợp lệ
+    function parseCoordinates (coordString) {
+      try {
+        const parts = coordString.split(',').map(coord => parseFloat(coord.trim()));
+        if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+          throw new Error('Định dạng tọa độ không hợp lệ');
+        }
+        return parts;
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+        return null;
+      }
+    }
 
     // Kết nối socket khách hàng
     document.getElementById('connect-customer').addEventListener('click', () => {
@@ -199,10 +255,19 @@
         return;
       }
 
-      customerSocket = io(SOCKET_URL);
+      // Đóng kết nối cũ nếu còn
+      if (customerSocket) {
+        customerSocket.disconnect();
+      }
+
+      reconnectAttempts = 0;
+      customerSocket = io(SOCKET_URL, {
+        reconnectionAttempts: 3,
+        timeout: 10000
+      });
 
       customerSocket.on('connect', () => {
-        logCustomerEvent('Đã kết nối đến server');
+        logCustomerEvent('Đã kết nối đến server: ' + SOCKET_URL);
         customerSocket.emit('authenticate_customer', { customerId });
       });
 
@@ -253,6 +318,19 @@
       customerSocket.on('disconnect', () => {
         logCustomerEvent('Đã ngắt kết nối khỏi server');
         showStatus('customer-status', 'Đã ngắt kết nối', false);
+
+        // Thử kết nối lại tự động
+        setTimeout(() => reconnectSocket('customer'), 3000);
+      });
+
+      customerSocket.on('connect_error', (error) => {
+        logCustomerEvent('Lỗi kết nối: ' + error.message);
+        showStatus('customer-status', 'Lỗi kết nối', false);
+      });
+
+      customerSocket.on('connect_timeout', () => {
+        logCustomerEvent('Kết nối bị hết thời gian chờ');
+        showStatus('customer-status', 'Hết thời gian chờ', false);
       });
     });
 
@@ -268,8 +346,15 @@
       const notes = document.getElementById('order-notes').value;
       const findDriver = document.getElementById('find-driver').checked;
 
-      const [pickupLat, pickupLng] = pickupLocation.split(',').map(coord => parseFloat(coord.trim()));
-      const [dropoffLat, dropoffLng] = dropoffLocation.split(',').map(coord => parseFloat(coord.trim()));
+      const pickupCoords = parseCoordinates(pickupLocation);
+      const dropoffCoords = parseCoordinates(dropoffLocation);
+
+      if (!pickupCoords || !dropoffCoords) {
+        return;
+      }
+
+      const [pickupLat, pickupLng] = pickupCoords;
+      const [dropoffLat, dropoffLng] = dropoffCoords;
 
       customerSocket.emit('create_order', {
         customerId: document.getElementById('customer-id').value,
@@ -307,10 +392,19 @@
         return;
       }
 
-      driverSocket = io(SOCKET_URL);
+      // Đóng kết nối cũ nếu còn
+      if (driverSocket) {
+        driverSocket.disconnect();
+      }
+
+      reconnectAttempts = 0;
+      driverSocket = io(SOCKET_URL, {
+        reconnectionAttempts: 3,
+        timeout: 10000
+      });
 
       driverSocket.on('connect', () => {
-        logDriverEvent('Đã kết nối đến server');
+        logDriverEvent('Đã kết nối đến server: ' + SOCKET_URL);
         driverSocket.emit('authenticate_driver', { token });
       });
 
@@ -384,6 +478,19 @@
         logDriverEvent('Đã ngắt kết nối khỏi server');
         showStatus('driver-status', 'Đã ngắt kết nối', false);
         resetDriverOrderControls();
+
+        // Thử kết nối lại tự động
+        setTimeout(() => reconnectSocket('driver'), 3000);
+      });
+
+      driverSocket.on('connect_error', (error) => {
+        logDriverEvent('Lỗi kết nối: ' + error.message);
+        showStatus('driver-status', 'Lỗi kết nối', false);
+      });
+
+      driverSocket.on('connect_timeout', () => {
+        logDriverEvent('Kết nối bị hết thời gian chờ');
+        showStatus('driver-status', 'Hết thời gian chờ', false);
       });
     });
 
@@ -395,7 +502,13 @@
       }
 
       const location = document.getElementById('driver-location').value;
-      const [lat, lng] = location.split(',').map(coord => parseFloat(coord.trim()));
+      const coordsParts = parseCoordinates(location);
+
+      if (!coordsParts) {
+        return;
+      }
+
+      const [lat, lng] = coordsParts;
 
       driverSocket.emit('update_location', { latitude: lat, longitude: lng });
       logDriverEvent('Đang cập nhật vị trí...');
@@ -545,9 +658,12 @@
       `;
 
       if (orderData.driverFound) {
+        const driverInfo = orderData.driverInfo || {};
+        const profile = driverInfo.profile || {};
+
         html += `
-          <div><strong>Tài xế:</strong> ${orderData.driverInfo?.profile?.name || orderData.driverId || '-'}</div>
-          <div><strong>Khoảng cách:</strong> ${orderData.driverInfo?.distance || '-'}</div>
+          <div><strong>Tài xế:</strong> ${profile.name || driverInfo.driverId || orderData.driverId || '-'}</div>
+          <div><strong>Khoảng cách:</strong> ${driverInfo.distance || '-'}</div>
         `;
       }
 

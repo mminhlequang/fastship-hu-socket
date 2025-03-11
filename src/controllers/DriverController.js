@@ -13,6 +13,7 @@ class DriverController {
 
       // Đăng ký hoặc cập nhật thông tin tài xế
       const driver = driverService.registerDriver(socket);
+      const uid = driver.driverData.uid;
 
       // Thông báo kết nối thành công
       SocketResponse.emitSuccess(socket, 'connection_success', {
