@@ -448,6 +448,7 @@
         driverSocket.disconnect();
       }
 
+
       reconnectAttempts = 0;
       driverSocket = io(SOCKET_URL, {
         reconnectionAttempts: 3,
@@ -486,9 +487,22 @@
       // Xử lý yêu cầu đơn hàng mới (30s để phản hồi)
       driverSocket.on('new_order_request', (data) => {
         logDriverEvent('Yêu cầu đơn hàng mới: ' + JSON.stringify(data));
-        currentOrderId = data.orderId;
-        updateDriverOrderInfo(data.order);
 
+        const orderId = data.data.orderId;
+
+        if (!orderId) {
+          logDriverEvent('Lỗi: Dữ liệu đơn hàng không hợp lệ, thiếu orderId');
+          return;
+        }
+
+        // Cập nhật mã đơn hàng hiện tại
+        currentOrderId = orderId;
+        logDriverEvent('Đã lưu mã đơn hàng: ' + currentOrderId);
+
+        // Cập nhật thông tin đơn hàng
+        updateDriverOrderInfo(data.data.order);
+
+        // Kích hoạt các nút chức năng
         document.getElementById('accept-order').disabled = false;
         document.getElementById('reject-order').disabled = false;
 
@@ -633,11 +647,19 @@
 
     // Nhận đơn hàng
     document.getElementById('accept-order').addEventListener('click', () => {
-      if (!driverSocket || !currentOrderId) {
-        alert('Không có đơn hàng để nhận');
+      if (!driverSocket) {
+        alert('Chưa kết nối socket tài xế, vui lòng kết nối trước');
         return;
       }
 
+      if (!currentOrderId) {
+        // Hiển thị thông tin chi tiết về lỗi
+        logDriverEvent('Lỗi: Không tìm thấy mã đơn hàng (currentOrderId không có giá trị)');
+        alert('Không tìm thấy mã đơn hàng để nhận');
+        return;
+      }
+
+      logDriverEvent('Đang gửi yêu cầu nhận đơn: ' + currentOrderId);
       driverSocket.emit('driver_order_response', {
         orderId: currentOrderId,
         status: 'accepted'
@@ -726,6 +748,10 @@
       appendLog('customer-log', message);
     }
 
+    function logDriverEvent (message) {
+      appendLog('driver-log', message);
+    }
+
     function appendLog (elementId, message) {
       const now = new Date();
       const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
@@ -774,6 +800,12 @@
       if (!orderData) {
         infoElement.innerHTML = 'Chưa có đơn hàng';
         return;
+      }
+
+      // Đảm bảo orderId được cập nhật toàn cục để sử dụng khi nhấn nút
+      if (orderData.orderId) {
+        currentOrderId = orderData.orderId;
+        logDriverEvent('Cập nhật currentOrderId: ' + currentOrderId);
       }
 
       let html = `
@@ -894,17 +926,7 @@
     }
 
     function getStatusText (status) {
-      const statusMap = {
-        'pending': 'Chờ xử lý',
-        'assigned': 'Đã gán tài xế',
-        'accepted': 'Tài xế đã nhận',
-        'picked': 'Đã lấy hàng',
-        'in_progress': 'Đang giao hàng',
-        'completed': 'Đã hoàn thành',
-        'cancelled': 'Đã hủy'
-      };
-
-      return statusMap[status] || status || 'Không xác định';
+      return translateStatus(status);
     }
 
     function translateStatus (status) {
