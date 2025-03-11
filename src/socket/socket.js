@@ -143,37 +143,6 @@ const setupSocketEvents = (io) => {
       }
     });
 
-    // Xác thực admin
-    socket.on('authenticate_admin', async (data) => {
-      try {
-        if (!data.adminKey || data.adminKey !== process.env.ADMIN_KEY) {
-          SocketResponse.emitError(socket, 'authentication_error', MessageCodes.ADMIN_KEY_INVALID, {
-            message: 'Mã xác thực không hợp lệ'
-          });
-          return;
-        }
-
-        logEvent(`Xác thực admin: ${socket.id}`);
-
-        // Lưu thông tin admin vào socket
-        socket.adminData = {
-          isAdmin: true
-        };
-
-        // Thông báo kết nối thành công cho client
-        SocketResponse.emitSuccess(socket, 'authentication_success', {
-          message: 'Xác thực admin thành công'
-        });
-
-        logEvent(`Xác thực thành công cho admin`);
-      } catch (error) {
-        logEvent(`Lỗi khi xác thực admin: ${error.message}`);
-        SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
-          message: 'Lỗi khi xác thực: ' + error.message
-        });
-      }
-    });
-
     // Cập nhật vị trí tài xế
     socket.on('update_location', async (data) => {
       try {

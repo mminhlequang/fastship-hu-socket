@@ -85,8 +85,25 @@ class DriverService {
   }
 
   // Lấy danh sách tài xế đang online
-  getOnlineDrivers () {
-    return Object.values(this.drivers).filter(driver => driver.isOnline);
+  getOnlineDrivers (isBusy = null, lat = null, lng = null) {
+    // Lọc các tài xế online và theo trạng thái bận nếu được chỉ định
+    let drivers = Object.values(this.drivers).filter(driver => driver.isOnline && (isBusy === null || driver.isBusy === isBusy));
+
+    // Nếu có tọa độ lat, lng
+    if (lat !== null && lng !== null) {
+      // Lọc tài xế có location không null
+      drivers = drivers.filter(driver => driver.location && driver.location.lat && driver.location.lng);
+
+      // Tính khoảng cách và sắp xếp từ gần đến xa
+      drivers.forEach(driver => {
+        driver.distance = this.calculateDistance(lat, lng, driver.location.lat, driver.location.lng);
+      });
+
+      // Sắp xếp theo khoảng cách tăng dần
+      drivers.sort((a, b) => a.distance - b.distance);
+    }
+
+    return drivers;
   }
 
   // Tính khoảng cách giữa hai tọa độ (công thức Haversine)

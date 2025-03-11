@@ -68,50 +68,115 @@ class OrderService {
     }
 
     // Lấy danh sách tài xế đang hoạt động
-    const availableDrivers = driverService.getOnlineDrivers()
-      .filter(driver => !driver.isBusy);
+    const availableDrivers = driverService.getOnlineDrivers(false);
 
     if (availableDrivers.length === 0) {
       console.log(`Không có tài xế khả dụng cho đơn hàng: ${orderId}`);
       return null;
     }
 
-    // Nếu có tọa độ trong orderDetails, tìm tài xế gần nhất
+    // Nếu có tọa độ trong orderDetails, sắp xếp tài xế theo khoảng cách
     if (order.orderDetails.pickupLocation) {
       const { lat, lng } = order.orderDetails.pickupLocation;
 
-      // Tìm tài xế gần nhất
-      let nearestDriver = null;
-      let minDistance = Infinity;
+      // Tính khoảng cách cho mỗi tài xế
+      const driversWithDistance = availableDrivers
+        .filter(driver => driver.location)
+        .map(driver => {
+          const distance = driverService.calculateDistance(
+            lat, lng,
+            driver.location.lat, driver.location.lng
+          );
+          return { driver, distance };
+        })
+        .sort((a, b) => a.distance - b.distance);
 
-      for (const driver of availableDrivers) {
-        if (!driver.location) continue;
-
-        const distance = driverService.calculateDistance(
-          lat, lng,
-          driver.location.lat, driver.location.lng
-        );
-
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestDriver = driver;
-        }
-      }
-
-      if (nearestDriver) {
+      // Trả về mảng đã sắp xếp theo khoảng cách
+      if (driversWithDistance.length > 0) {
         return {
-          driver: nearestDriver,
-          distance: minDistance
+          driversList: driversWithDistance,
+          nextDriverIndex: 0
         };
       }
     }
 
-    // Nếu không có tọa độ hoặc không tìm được tài xế gần nhất, chọn ngẫu nhiên
-    const randomIndex = Math.floor(Math.random() * availableDrivers.length);
-    return {
-      driver: availableDrivers[randomIndex],
+    // Nếu không có tọa độ hoặc không tìm được tài xế gần nhất, trả về danh sách ngẫu nhiên
+    const randomizedDrivers = [...availableDrivers].map(driver => ({
+      driver,
       distance: null
+    }));
+
+    return {
+      driversList: randomizedDrivers,
+      nextDriverIndex: 0
     };
+  }
+
+  // Lấy tài xế tiếp theo từ danh sách đã sắp xếp
+  getNextDriverForOrder (orderId, driversList, currentIndex) {
+    if (!driversList || !Array.isArray(driversList) || driversList.length === 0) {
+      return null;
+    }
+
+    if (currentIndex >= driversList.length) {
+      return null; // Hết danh sách tài xế
+    }
+
+    return driversList[currentIndex];
+  }
+
+  // Đánh dấu tài xế đã được gửi thông báo chờ phản hồi
+  markDriverNotified (orderId, driverId) {
+    const order = this.getOrderById(orderId);
+    if (!order) return false;
+
+    // Lưu lại danh sách tài xế đã được thông báo
+    if (!order.notifiedDrivers) {
+      order.notifiedDrivers = [];
+    }
+
+    if (!order.notifiedDrivers.includes(driverId)) {
+      order.notifiedDrivers.push(driverId);
+    }
+
+    return true;
+  }
+
+  // Đánh dấu tài xế đã từ chối đơn hàng
+  markDriverRejected (orderId, driverId, reason = 'Không có lý do') {
+    const order = this.getOrderById(orderId);
+    if (!order) return false;
+
+    // Lưu lại danh sách tài xế đã từ chối
+    if (!order.rejectedDrivers) {
+      order.rejectedDrivers = [];
+    }
+
+    if (!order.rejectedDrivers.find(d => d.driverId === driverId)) {
+      order.rejectedDrivers.push({
+        driverId,
+        reason,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return true;
+  }
+
+  // Kiểm tra xem tài xế đã được thông báo chưa
+  hasDriverBeenNotified (orderId, driverId) {
+    const order = this.getOrderById(orderId);
+    if (!order || !order.notifiedDrivers) return false;
+
+    return order.notifiedDrivers.includes(driverId);
+  }
+
+  // Kiểm tra xem tài xế đã từ chối chưa
+  hasDriverRejected (orderId, driverId) {
+    const order = this.getOrderById(orderId);
+    if (!order || !order.rejectedDrivers) return false;
+
+    return order.rejectedDrivers.some(d => d.driverId === driverId);
   }
 
   // Gán đơn hàng cho tài xế
