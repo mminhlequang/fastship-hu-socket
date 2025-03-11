@@ -1,4 +1,6 @@
 const driverService = require('../services/DriverService');
+const SocketResponse = require('../utils/SocketResponse');
+const MessageCodes = require('../utils/MessageCodes');
 
 class DriverController {
   /**
@@ -13,7 +15,7 @@ class DriverController {
       const driver = driverService.registerDriver(socket);
 
       // Thông báo kết nối thành công
-      socket.emit('connection_success', {
+      SocketResponse.emitSuccess(socket, 'connection_success', {
         message: 'Kết nối thành công',
         driverId: uid
       });
@@ -23,7 +25,9 @@ class DriverController {
       return driver;
     } catch (error) {
       console.error('Lỗi khi xử lý kết nối tài xế:', error);
-      socket.emit('error', { message: 'Lỗi server' });
+      SocketResponse.emitError(socket, 'error', MessageCodes.SERVER_ERROR, {
+        message: 'Lỗi server'
+      });
     }
   }
 
@@ -37,14 +41,18 @@ class DriverController {
       const { uid, status } = data;
 
       if (!uid) {
-        socket.emit('error', { message: 'UUID là bắt buộc' });
+        SocketResponse.emitError(socket, 'error', MessageCodes.INVALID_PARAMS, {
+          message: 'UUID là bắt buộc'
+        });
         return null;
       }
 
       // Kiểm tra tài xế có tồn tại không
       const driver = driverService.getDriverByUuid(uid);
       if (!driver) {
-        socket.emit('error', { message: 'Tài xế không tồn tại' });
+        SocketResponse.emitError(socket, 'error', MessageCodes.DRIVER_NOT_FOUND, {
+          message: 'Tài xế không tồn tại'
+        });
         return null;
       }
 
@@ -60,7 +68,9 @@ class DriverController {
       return driver;
     } catch (error) {
       console.error('Lỗi khi cập nhật trạng thái tài xế:', error);
-      socket.emit('error', { message: 'Lỗi server' });
+      SocketResponse.emitError(socket, 'error', MessageCodes.SERVER_ERROR, {
+        message: 'Lỗi server'
+      });
     }
 
     return null;
@@ -96,14 +106,18 @@ class DriverController {
       const driver = driverService.getDriverBySocketId(socket.id);
 
       if (!driver) {
-        socket.emit('error', { message: 'Tài xế không tồn tại hoặc chưa đăng nhập' });
+        SocketResponse.emitError(socket, 'error', MessageCodes.DRIVER_NOT_FOUND, {
+          message: 'Tài xế không tồn tại hoặc chưa đăng nhập'
+        });
         return null;
       }
 
       const { latitude, longitude } = data;
 
       if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        socket.emit('error', { message: 'Vị trí không hợp lệ ' + JSON.stringify(data) });
+        SocketResponse.emitError(socket, 'error', MessageCodes.LOCATION_INVALID, {
+          message: 'Vị trí không hợp lệ ' + JSON.stringify(data)
+        });
         return null;
       }
 
@@ -112,7 +126,7 @@ class DriverController {
 
       // Phát sóng vị trí mới đến kênh cụ thể của tài xế
       // Những client đang nghe kênh này sẽ nhận được cập nhật vị trí mới
-      socket.server.emit(`driver_${driver.driverData.uid}`, {
+      SocketResponse.emitToRoom(socket.server, `driver_${driver.driverData.uid}`, `driver_${driver.driverData.uid}`, true, MessageCodes.SUCCESS, {
         type: 'location_update',
         driver: {
           uid: driver.driverData.uid,
@@ -124,7 +138,9 @@ class DriverController {
       return location;
     } catch (error) {
       console.error('Lỗi khi cập nhật vị trí tài xế:', error);
-      socket.emit('error', { message: 'Lỗi server' });
+      SocketResponse.emitError(socket, 'error', MessageCodes.SERVER_ERROR, {
+        message: 'Lỗi server'
+      });
     }
 
     return null;

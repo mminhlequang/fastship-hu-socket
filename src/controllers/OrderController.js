@@ -2,6 +2,8 @@ const orderService = require('../services/OrderService');
 const driverService = require('../services/DriverService');
 const fs = require('fs');
 const path = require('path');
+const SocketResponse = require('../utils/SocketResponse');
+const MessageCodes = require('../utils/MessageCodes');
 
 class OrderController {
   /**
@@ -13,7 +15,10 @@ class OrderController {
     try {
       // Kiểm tra dữ liệu đầu vào
       if (!data.customerId) {
-        throw new Error('customerId là bắt buộc');
+        SocketResponse.emitError(socket, 'error', MessageCodes.CUSTOMER_ID_MISSING, {
+          message: 'customerId là bắt buộc'
+        });
+        return null;
       }
 
       // Tạo đơn hàng mới
@@ -23,11 +28,9 @@ class OrderController {
       });
 
       // Phản hồi cho người tạo đơn
-      socket.emit('order_created', {
-        status: 'success',
+      SocketResponse.emitSuccess(socket, 'order_created', {
         orderId: order.orderId,
-        order: order.getOrderData(),
-        timestamp: new Date().toISOString()
+        order: order.getOrderData()
       });
 
       // Tự động tìm tài xế nếu có yêu cầu
@@ -38,7 +41,9 @@ class OrderController {
       return order;
     } catch (error) {
       console.error('Lỗi khi tạo đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi tạo đơn hàng: ' + error.message });
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_CREATION_FAILED, {
+        message: 'Lỗi khi tạo đơn hàng: ' + error.message
+      });
       return null;
     }
   }
@@ -54,13 +59,19 @@ class OrderController {
       const { orderId } = data;
 
       if (!orderId) {
-        throw new Error('orderId là bắt buộc');
+        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_ID_MISSING, {
+          message: 'orderId là bắt buộc'
+        });
+        return null;
       }
 
       // Lấy thông tin đơn hàng
       const order = orderService.getOrderById(orderId);
       if (!order) {
-        throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
+        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_NOT_FOUND, {
+          message: `Đơn hàng không tồn tại: ${orderId}`
+        });
+        return null;
       }
 
       // Tìm tài xế phù hợp
@@ -68,11 +79,9 @@ class OrderController {
 
       if (!result) {
         // Không tìm thấy tài xế
-        socket.emit('find_driver_result', {
-          status: 'failed',
+        SocketResponse.emitError(socket, 'find_driver_result', MessageCodes.NO_AVAILABLE_DRIVER, {
           orderId,
-          message: 'Không tìm được tài xế phù hợp',
-          timestamp: new Date().toISOString()
+          message: 'Không tìm được tài xế phù hợp'
         });
         return null;
       }
@@ -83,35 +92,34 @@ class OrderController {
       const updatedOrder = orderService.assignOrderToDriver(orderId, driver.driverData.uid);
 
       // Phản hồi cho người tạo đơn
-      socket.emit('find_driver_result', {
-        status: 'success',
+      SocketResponse.emitSuccess(socket, 'find_driver_result', {
         orderId,
         driverId: driver.driverData.uid,
         driverInfo: {
           profile: driver.driverData.profile,
           location: driver.location,
           distance: distance ? `${distance.toFixed(2)} km` : 'Không xác định'
-        },
-        timestamp: new Date().toISOString()
+        }
       });
 
       // Thông báo cho tài xế về đơn hàng mới
       if (driver.socketId) {
-        io.to(driver.socketId).emit('new_order_assigned', {
+        SocketResponse.emitSuccess(io.to(driver.socketId), 'new_order_assigned', {
           orderId,
           order: updatedOrder.getOrderData(),
           customer: {
             customerId: updatedOrder.customerId,
             // Có thể thêm thông tin khách hàng nếu cần
-          },
-          timestamp: new Date().toISOString()
+          }
         });
       }
 
       return updatedOrder;
     } catch (error) {
       console.error('Lỗi khi tìm tài xế cho đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi tìm tài xế: ' + error.message });
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_DRIVER_ASSIGNMENT_FAILED, {
+        message: 'Lỗi khi tìm tài xế: ' + error.message
+      });
       return null;
     }
   }
