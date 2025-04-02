@@ -1,6 +1,6 @@
 const driverService = require('../services/DriverService');
 const SocketResponse = require('../utils/SocketResponse');
-const MessageCodes = require('../utils/MessageCodes');
+const { MessageCodes, AppOrderProcessStatus } = require('../utils/MessageCodes');
 
 class DriverController {
   /**

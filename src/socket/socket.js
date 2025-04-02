@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const SocketResponse = require('../utils/SocketResponse');
-const MessageCodes = require('../utils/MessageCodes');
+const { MessageCodes, AppOrderProcessStatus } = require('../utils/MessageCodes');
 
 /**
  * Thiết lập các sự kiện Socket.IO
@@ -111,30 +111,52 @@ const setupSocketEvents = (io) => {
     // Xác thực khách hàng
     socket.on('authenticate_customer', async (data) => {
       try {
-        if (!data.customerId) {
-          SocketResponse.emitError(socket, 'authentication_error', MessageCodes.CUSTOMER_ID_MISSING, {
-            message: 'Không có customerId'
-          });
-          return;
+        if (!data.token) {
+          throw new Error('Không có token xác thực');
         }
 
-        logEvent(`Xác thực khách hàng: ${socket.id} - customerId: ${data.customerId}`);
+        logEvent(`Xác thực khách hàng: ${socket.id} - token: ${data.token.substring(0, 10)}...`);
 
-        // Lưu thông tin khách hàng vào socket
-        socket.customerData = {
-          customerId: data.customerId,
-          // Có thể thêm thông tin khác nếu cần
-        };
+        // Lưu token vào socket để sử dụng sau này
+        socket.accessToken = data.token;
 
-        // Thêm socket vào room của khách hàng
-        socket.join(`customer_${data.customerId}`);
+        // Lấy thông tin tài xế từ API
+        try {
+          const profileResponse = await axios.get('https://zennail23.com/api/v1/profile', {
+            headers: {
+              'Authorization': `Bearer ${data.token}`,
+              'X-CSRF-TOKEN': '',
+              'accept': '*/*'
+            }
+          });
 
-        // Thông báo kết nối thành công cho client
-        SocketResponse.emitSuccess(socket, 'authentication_success', {
-          customerId: data.customerId
-        });
+          if (profileResponse.data.status != true) {
+            throw new Error('Không có token xác thực');
+          }
 
-        logEvent(`Xác thực thành công cho khách hàng: ${data.customerId}`);
+          // Lưu thông tin driver vào socket
+          socket.customerData = {
+            customerId: profileResponse.data.data.id,
+            profile: profileResponse.data.data
+          };
+
+          // Đăng ký khách hàng với hệ thống
+          // await customerController.handleCustomerConnect(socket);
+
+          // Thông báo kết nối thành công cho client
+          SocketResponse.emitSuccess(socket, 'authentication_success', {
+            customerId: socket.customerData.customerId,
+            profile: profileResponse.data,
+          });
+
+          logEvent(`Xác thực thành công cho khách hàng: ${JSON.stringify(socket.customerData)}`);
+        } catch (apiError) {
+          logEvent(`Lỗi khi gọi API: ${apiError.message}`);
+          SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
+            message: 'Lỗi khi xác thực với API: ' + apiError.message
+          });
+          throw apiError;
+        }
       } catch (error) {
         logEvent(`Lỗi khi xác thực khách hàng: ${error.message}`);
         SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
@@ -198,29 +220,10 @@ const setupSocketEvents = (io) => {
 
     // Tạo đơn hàng mới
     socket.on('create_order', async (data) => {
-      try {
-        logEvent(`Yêu cầu tạo đơn hàng mới từ ${socket.id}: ${JSON.stringify(data)}`);
-        await orderController.handleCreateOrder(socket, data, io);
-      } catch (error) {
-        logEvent(`Lỗi khi tạo đơn hàng: ${error.message}`);
-        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_CREATION_FAILED, {
-          message: 'Lỗi khi tạo đơn hàng: ' + error.message
-        });
-      }
+      logEvent(`Yêu cầu tạo đơn hàng mới từ ${socket.id}: OrderId: ${data.id}`);
+      orderController.handleCreateOrder(socket, data, io);
     });
 
-    // Tìm tài xế cho đơn hàng
-    socket.on('find_driver', async (data) => {
-      try {
-        logEvent(`Yêu cầu tìm tài xế cho đơn hàng ${data.orderId} từ ${socket.id}`);
-        await orderController.findDriverForOrder(socket, data, io);
-      } catch (error) {
-        logEvent(`Lỗi khi tìm tài xế: ${error.message}`);
-        SocketResponse.emitError(socket, 'error', MessageCodes.NO_AVAILABLE_DRIVER, {
-          message: 'Lỗi khi tìm tài xế: ' + error.message
-        });
-      }
-    });
 
     // Phản hồi tài xế về đơn hàng
     socket.on('driver_order_response', async (data) => {
@@ -286,6 +289,16 @@ const setupSocketEvents = (io) => {
     });
 
     // === KẾT THÚC CÁC SỰ KIỆN QUẢN LÝ ĐƠN HÀNG ===
+
+    socket.on('joinRoom', (roomName) => {
+      socket.join(roomName);
+      console.log(`Client ${socket.id} đã tham gia phòng ${roomName}`);
+    });
+
+    socket.on('leaveRoom', (roomName) => {
+      socket.leave(roomName);
+      console.log(`Client ${socket.id} đã rời khỏi phòng ${roomName}`);
+    });
 
     // Kiểm tra kết nối
     socket.on('ping_server', () => {

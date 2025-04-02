@@ -1,4 +1,28 @@
 /**
+ * Enum cho trạng thái xử lý đơn hàng
+ */
+const AppOrderProcessStatus = {
+  PENDING: 'pending', // Đơn hàng mới 
+  FIND_DRIVER: 'findDriver', // Đang tìm tài xế
+  DRIVER_ACCEPTED: 'driverAccepted', // Tài xế đã chấp nhận đơn
+  STORE_ACCEPTED: 'storeAccepted', // Cửa hàng đã chấp nhận đơn
+  DRIVER_ARRIVED_STORE: 'driverArrivedStore', // Tài xế đã đến địa điểm giao hàng
+  DRIVER_PICKED: 'driverPicked', // Tài xế đã lấy hàng
+  DRIVER_DELIVERING: 'driverDelivering', // Tài xế đang giao hàng
+  DRIVER_ARRIVED_DESTINATION: 'driverArrivedDestination', // Tài xế đã đến địa điểm giao hàng
+  COMPLETED: 'completed', // Đơn hàng hoàn thành
+  CANCELLED: 'cancelled' // Đơn hàng đã hủy
+};
+
+const FindDriverStatus = {
+  FINDING: 'finding', // Đang tìm tài xế
+  AVAILABLE_DRIVERS: 'availableDrivers', // Tài xế khả dụng
+  FOUND: 'found', // Đã tìm thấy tài xế
+  NO_DRIVER: 'noDriver', // Không tìm thấy tài xế
+  ERROR: 'error' // Lỗi
+};
+
+/**
  * Các mã thông báo được sử dụng trong hệ thống
  */
 const MessageCodes = {
@@ -39,4 +63,4 @@ const MessageCodes = {
   CUSTOMER_NOT_AUTHORIZED: 'CUSTOMER_NOT_AUTHORIZED'
 };
 
-module.exports = MessageCodes; 
+module.exports = { MessageCodes, AppOrderProcessStatus, FindDriverStatus }; 

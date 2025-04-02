@@ -12,35 +12,30 @@ class OrderService {
   // Tạo đơn hàng mới
   createOrder (orderData) {
     // Tạo ID đơn hàng nếu chưa có
-    if (!orderData.orderId) {
-      orderData.orderId = uuidv4();
-    }
-
-    // Kiểm tra customerId
-    if (!orderData.customerId) {
-      throw new Error('customerId là bắt buộc');
+    if (!orderData.id) {
+      orderData.id = uuidv4();
     }
 
     // Tạo đơn hàng mới
     const order = new Order(orderData);
 
     // Lưu vào danh sách đơn hàng
-    this.orders[order.orderId] = order;
+    this.orders[order.id] = order;
 
     // Lưu vào danh sách đơn hàng của khách hàng
-    if (!this.customerOrders[order.customerId]) {
-      this.customerOrders[order.customerId] = [];
+    if (!this.customerOrders[order.customer.id]) {
+      this.customerOrders[order.customer.id] = [];
     }
-    this.customerOrders[order.customerId].push(order.orderId);
+    this.customerOrders[order.customer.id].push(order.id);
 
-    console.log(`Đã tạo đơn hàng mới: ${order.orderId} cho khách hàng ${order.customerId}`);
+    console.log(`Đã tạo đơn hàng mới: ${order.id} cho khách hàng ${order.customer.id}`);
 
     return order;
   }
 
   // Lấy đơn hàng theo ID
-  getOrderById (orderId) {
-    return this.orders[orderId] || null;
+  getOrderById (id) {
+    return this.orders[id] || null;
   }
 
   // Lấy danh sách đơn hàng của khách hàng
@@ -56,16 +51,8 @@ class OrderService {
   }
 
   // Tìm tài xế phù hợp cho đơn hàng
-  findDriverForOrder (orderId) {
-    const order = this.getOrderById(orderId);
-
-    if (!order) {
-      throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
-    }
-
-    if (order.status !== 'pending') {
-      throw new Error(`Đơn hàng không ở trạng thái chờ: ${orderId}`);
-    }
+  findDriverForOrder (order) {
+    const orderId = order.id; 
 
     // Lấy danh sách tài xế đang hoạt động
     const availableDrivers = driverService.getOnlineDrivers(false);
@@ -76,8 +63,8 @@ class OrderService {
     }
 
     // Nếu có tọa độ trong orderDetails, sắp xếp tài xế theo khoảng cách
-    if (order.orderDetails.pickupLocation) {
-      const { lat, lng } = order.orderDetails.pickupLocation;
+    if (order.store.lat && order.store.lng) {
+      const { lat, lng } = order.store;
 
       // Tính khoảng cách cho mỗi tài xế
       const driversWithDistance = availableDrivers
@@ -201,8 +188,10 @@ class OrderService {
       throw new Error(`Tài xế đang bận: ${driverId}`);
     }
 
+    console.log('driver', driver);
+
     // Cập nhật trạng thái đơn hàng
-    order.assignDriver(driverId);
+    order.assignDriver(driver.id);
 
     // Cập nhật trạng thái tài xế
     driver.setBusyStatus(true);
@@ -245,18 +234,96 @@ class OrderService {
       }
     }
 
-    // Cập nhật trạng thái đơn hàng
+    this.callApiUpdateOrder(orderId, newStatus, order.driver_id, order.token);
     return order.updateStatus(newStatus, data);
-  }
+  } 
 
-  // Lấy tất cả đơn hàng theo trạng thái
-  getOrdersByStatus (status) {
-    return Object.values(this.orders).filter(order => order.status === status);
+  /**
+   * Gọi API để gán tài xế hoặc cập nhật trạng thái đơn hàng
+   * @param {number} orderId - ID của đơn hàng
+   * @param {string} processStatus - Trạng thái mới của đơn hàng
+   * @param {number|null} driverId - ID của tài xế (nếu có)
+   * @param {string} token - Token xác thực của khách hàng
+   * @returns {Promise<Object>} - Kết quả từ API
+   */
+  async callApiUpdateOrder(orderId, processStatus, driverId = null, token) {
+    try {
+      // Kiểm tra tham số đầu vào
+      if (!orderId) {
+        throw new Error('ID đơn hàng là bắt buộc');
+      }
+      
+      if (!processStatus) {
+        throw new Error('Trạng thái đơn hàng là bắt buộc');
+      }
+      
+      if (!token) {
+        throw new Error('Token xác thực là bắt buộc');
+      }
+      
+      // Chuẩn bị dữ liệu gửi đi
+      const requestData = {
+        id: orderId,
+        process_status: processStatus
+      };
+      
+      // Thêm driver_id nếu có
+      if (driverId) {
+        requestData.driver_id = driverId;
+      }
+      
+      // Gọi API sử dụng fetch
+      const response = await fetch('https://zennail23.com/api/v1/order/update', {
+        method: 'POST',
+        headers: {
+          'accept': '*/*',
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': ''
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      // Xử lý kết quả
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`Lỗi API: ${responseData.message || 'Không xác định'}`);
+      }
+      
+      console.log(`Đã cập nhật đơn hàng ${orderId} thành công:`, responseData);
+      return responseData;
+    } catch (error) {
+      console.error('Lỗi khi gọi API cập nhật đơn hàng:', error);
+      throw error;
+    }
   }
-
-  // Lấy tất cả đơn hàng
-  getAllOrders () {
-    return Object.values(this.orders);
+  
+  /**
+   * Cập nhật trạng thái đơn hàng và đồng bộ với API
+   * @param {number} orderId - ID của đơn hàng
+   * @param {string} newStatus - Trạng thái mới
+   * @param {Object} data - Dữ liệu bổ sung
+   * @param {string} token - Token xác thực của khách hàng
+   * @returns {Object} - Kết quả cập nhật
+   */
+  async updateOrderStatusWithApi(orderId, newStatus, data = {}, token) {
+    try {
+      // Cập nhật trạng thái cục bộ trước
+      const localUpdateResult = this.updateOrderStatus(orderId, newStatus, data);
+      
+      // Lấy ID tài xế nếu có
+      const order = this.getOrderById(orderId);
+      const driverId = order.driver ? order.driver.id : null;
+      
+      // Gọi API để đồng bộ
+      await this.callApiUpdateOrder(orderId, newStatus, driverId, token);
+      
+      return localUpdateResult;
+    } catch (error) {
+      console.error(`Lỗi khi cập nhật đơn hàng ${orderId} với API:`, error);
+      throw error;
+    }
   }
 }
 

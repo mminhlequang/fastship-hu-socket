@@ -3,7 +3,7 @@ const driverService = require('../services/DriverService');
 const fs = require('fs');
 const path = require('path');
 const SocketResponse = require('../utils/SocketResponse');
-const MessageCodes = require('../utils/MessageCodes');
+const { MessageCodes, AppOrderProcessStatus, FindDriverStatus } = require('../utils/MessageCodes');
 
 class OrderController {
   /**
@@ -14,29 +14,28 @@ class OrderController {
   async handleCreateOrder (socket, data, io) {
     try {
       // Kiểm tra dữ liệu đầu vào
-      if (!data.customerId) {
-        SocketResponse.emitError(socket, 'error', MessageCodes.CUSTOMER_ID_MISSING, {
-          message: 'customerId là bắt buộc'
-        });
-        return null;
-      }
+      // if (!data.customerId) {
+      //   SocketResponse.emitError(socket, 'error', MessageCodes.CUSTOMER_ID_MISSING, {
+      //     message: 'customerId là bắt buộc'
+      //   });
+      //   return null;
+      // }
+
+      // Lấy token từ socket
+      data.accessToken = socket.accessToken;
 
       // Tạo đơn hàng mới
-      const order = orderService.createOrder({
-        customerId: data.customerId,
-        orderDetails: data.orderDetails || {}
-      });
+      const order = orderService.createOrder(data);
 
       // Phản hồi cho người tạo đơn
-      SocketResponse.emitSuccess(socket, 'order_created', {
-        orderId: order.orderId,
-        order: order.getOrderData()
+      SocketResponse.emitSuccess(socket, 'create_order_result', {
+        id: order.id,
+        process_status: AppOrderProcessStatus.FIND_DRIVER,
+        find_driver_status: FindDriverStatus.FINDING,
       });
 
-      // Tự động tìm tài xế nếu có yêu cầu
-      if (data.findDriver === true) {
-        this.findDriverForOrder(socket, { orderId: order.orderId }, io);
-      }
+      // Tự động tìm tài xế
+      this.findDriverForOrder(socket, order, io);
 
       return order;
     } catch (error) {
@@ -51,37 +50,26 @@ class OrderController {
   /**
    * Tìm tài xế cho đơn hàng
    * @param {Object} socket - Socket.IO socket
-   * @param {Object} data - Dữ liệu yêu cầu
+   * @param {Object} order - Đơn hàng
    * @param {Object} io - Socket.IO server instance
    */
-  async findDriverForOrder (socket, data, io) {
+  async findDriverForOrder (socket, order, io) {
     try {
-      const { orderId } = data;
-
-      if (!orderId) {
-        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_ID_MISSING, {
-          message: 'orderId là bắt buộc'
-        });
-        return null;
-      }
-
-      // Lấy thông tin đơn hàng
-      const order = orderService.getOrderById(orderId);
-      if (!order) {
-        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_NOT_FOUND, {
-          message: `Đơn hàng không tồn tại: ${orderId}`
-        });
-        return null;
-      }
 
       // Tìm danh sách tài xế phù hợp
-      const result = orderService.findDriverForOrder(orderId);
+      const result = orderService.findDriverForOrder(order);
 
       if (!result || !result.driversList || result.driversList.length === 0) {
         // Không tìm thấy tài xế
-        SocketResponse.emitError(socket, 'find_driver_result', MessageCodes.NO_AVAILABLE_DRIVER, {
-          orderId,
-          message: 'Không tìm được tài xế phù hợp'
+        // Phản hồi cho người tạo đơn
+        SocketResponse.emitSuccess(socket, 'create_order_result', {
+          id: order.id,
+          process_status: AppOrderProcessStatus.CANCELLED,
+          find_driver_status: FindDriverStatus.NO_DRIVER,
+        });
+        orderService.updateOrderStatus(order.id, AppOrderProcessStatus.CANCELLED, {
+          cancelledBy: 'customer',
+          cancelReason: 'Không tìm thấy tài xế'
         });
         return null;
       }
@@ -91,14 +79,16 @@ class OrderController {
       order.nextDriverIndex = 0;
 
       // Thông báo cho người dùng rằng đang tìm tài xế
-      SocketResponse.emitSuccess(socket, 'find_driver_start', {
-        orderId,
-        message: 'Đang tìm tài xế phù hợp',
-        driversCount: result.driversList.length
+      // Phản hồi cho người tạo đơn
+      SocketResponse.emitSuccess(socket, 'create_order_result', {
+        id: order.id,
+        process_status: AppOrderProcessStatus.FIND_DRIVER,
+        find_driver_status: FindDriverStatus.AVAILABLE_DRIVERS,
+        drivers: result.driversList
       });
 
       // Bắt đầu gửi thông báo cho tài xế đầu tiên
-      this.sendOrderToNextDriver(orderId, io);
+      this.sendOrderToNextDriver(order.id, io);
 
       return order;
     } catch (error) {
@@ -124,8 +114,8 @@ class OrderController {
       }
 
       // Kiểm tra xem đơn hàng đã được gán cho tài xế nào chưa
-      if (order.status !== 'pending' || order.assignedDriver) {
-        console.log(`Đơn hàng ${orderId} không cần tìm tài xế tiếp: status=${order.status}, assignedDriver=${order.assignedDriver}`);
+      if ((order.process_status != null && order.process_status !== AppOrderProcessStatus.PENDING) || order.assignedDriver) {
+        console.log(`Đơn hàng ${orderId} không cần tìm tài xế tiếp: status=${order.process_status}, assignedDriver=${order.assignedDriver}`);
         return null;
       }
 
@@ -133,9 +123,10 @@ class OrderController {
       if (!order.driversList || order.nextDriverIndex >= order.driversList.length) {
         console.log(`Hết danh sách tài xế cho đơn hàng ${orderId}`);
         // Thông báo cho khách hàng rằng không tìm thấy tài xế
-        io.to(`customer_${order.customerId}`).emit('find_driver_failed', {
+        SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'create_order_result', {
           orderId,
-          message: 'Không tìm được tài xế cho đơn hàng của bạn'
+          process_status: AppOrderProcessStatus.FIND_DRIVER,
+          find_driver_status: FindDriverStatus.NO_DRIVER,
         });
         return null;
       }
@@ -163,27 +154,14 @@ class OrderController {
       }
 
       // Gửi thông báo cho tài xế
-      SocketResponse.emitSuccess(io.to(driver.socketId), 'new_order_request', {
+      SocketResponse.emitSuccessToRoom(io, driver.socketId, 'new_order_request', {
         orderId,
         order: order.getOrderData(),
         customer: {
-          customerId: order.customerId,
+          customerId: order.customer.id,
           // Có thể thêm thông tin khách hàng nếu cần
         },
         distance: currentDriverInfo.distance ? `${currentDriverInfo.distance.toFixed(2)} km` : 'Không xác định',
-        responseTimeout: 30, // Thời gian chờ phản hồi (giây)
-        timestamp: new Date().toISOString()
-      });
-
-      // Thông báo cho khách hàng đang đợi tài xế phản hồi
-      io.to(`customer_${order.customerId}`).emit('waiting_driver_response', {
-        orderId,
-        driverId: driver.driverData.uid,
-        driverInfo: {
-          profile: driver.driverData.profile,
-          location: driver.location,
-          distance: currentDriverInfo.distance ? `${currentDriverInfo.distance.toFixed(2)} km` : 'Không xác định'
-        },
         responseTimeout: 30, // Thời gian chờ phản hồi (giây)
         timestamp: new Date().toISOString()
       });
@@ -192,7 +170,7 @@ class OrderController {
       setTimeout(() => {
         // Kiểm tra lại xem đơn hàng có còn pending và chưa được gán không
         const currentOrder = orderService.getOrderById(orderId);
-        if (currentOrder && currentOrder.status === 'pending' && !currentOrder.assignedDriver) {
+        if (currentOrder && (currentOrder.process_status == null || currentOrder.process_status !== AppOrderProcessStatus.PENDING) && !currentOrder.assignedDriver) {
           // Nếu tài xế hiện tại chưa phản hồi, chuyển sang tài xế tiếp theo
           if (!orderService.hasDriverRejected(orderId, driver.driverData.uid)) {
             // Đánh dấu là tài xế đã từ chối (timeout)
@@ -200,18 +178,11 @@ class OrderController {
 
             // Thông báo cho tài xế rằng đã hết thời gian
             if (driver.socketId) {
-              io.to(driver.socketId).emit('order_request_timeout', {
+              SocketResponse.emitToRoom(io, driver.socketId, 'order_request_timeout', true, MessageCodes.REQUEST_TIMEOUT, {
                 orderId,
                 message: 'Hết thời gian phản hồi cho đơn hàng này'
               });
             }
-
-            // Thông báo cho khách hàng
-            io.to(`customer_${order.customerId}`).emit('driver_response_timeout', {
-              orderId,
-              driverId: driver.driverData.uid,
-              timestamp: new Date().toISOString()
-            });
           }
 
           // Cập nhật chỉ số và gửi cho tài xế tiếp theo
@@ -268,10 +239,10 @@ class OrderController {
           const updatedOrder = orderService.assignOrderToDriver(orderId, socket.driverData.uid);
 
           // Cập nhật trạng thái đơn hàng
-          orderService.updateOrderStatus(orderId, 'accepted');
+          orderService.updateOrderStatus(orderId, AppOrderProcessStatus.DRIVER_ACCEPTED);
 
           // Thông báo cho tài xế
-          socket.emit('order_response_confirmed', {
+          SocketResponse.emitSuccess(socket, 'order_response_confirmed', {
             status: 'success',
             orderId,
             orderStatus: 'accepted',
@@ -279,10 +250,10 @@ class OrderController {
           });
 
           // Thông báo cho khách hàng
-          io.to(`customer_${order.customerId}`).emit('order_status_updated', {
+          SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'create_order_result', {
             orderId,
-            status: 'accepted',
-            driverId: socket.driverData.uid,
+            process_status: AppOrderProcessStatus.DRIVER_ACCEPTED,
+            find_driver_status: FindDriverStatus.FOUND,
             driverInfo: {
               profile: socket.driverData.profile,
               location: driverService.getDriverByUuid(socket.driverData.uid)?.location
@@ -294,7 +265,7 @@ class OrderController {
         } catch (error) {
           // Có thể đơn hàng đã được gán cho tài xế khác
           console.error('Lỗi khi gán đơn hàng:', error);
-          socket.emit('order_response_rejected', {
+          SocketResponse.emitError(socket, 'order_response_rejected', MessageCodes.ORDER_ASSIGNMENT_FAILED, {
             status: 'error',
             orderId,
             message: error.message,
@@ -308,7 +279,7 @@ class OrderController {
         orderService.markDriverRejected(orderId, socket.driverData.uid, reason || 'Không có lý do');
 
         // Thông báo cho tài xế
-        socket.emit('order_response_confirmed', {
+        SocketResponse.emitSuccess(socket, 'order_response_confirmed', {
           status: 'success',
           orderId,
           orderStatus: 'rejected',
@@ -316,7 +287,7 @@ class OrderController {
         });
 
         // Thông báo cho khách hàng
-        io.to(`customer_${order.customerId}`).emit('driver_rejected_order', {
+        SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'driver_rejected_order', {
           orderId,
           driverId: socket.driverData.uid,
           reason: reason || 'Không có lý do',
@@ -324,7 +295,7 @@ class OrderController {
         });
 
         // Tự động chuyển sang tài xế tiếp theo
-        if (order.status === 'pending' && !order.assignedDriver) {
+        if ((order.process_status == null || order.process_status !== AppOrderProcessStatus.PENDING) && !order.assignedDriver) {
           // Tăng chỉ số và gửi cho tài xế tiếp theo
           order.nextDriverIndex++;
           setTimeout(() => {
@@ -336,7 +307,9 @@ class OrderController {
       }
     } catch (error) {
       console.error('Lỗi khi xử lý phản hồi của tài xế:', error);
-      socket.emit('error', { message: 'Lỗi khi xử lý phản hồi: ' + error.message });
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_RESPONSE_PROCESSING_FAILED, {
+        message: 'Lỗi khi xử lý phản hồi: ' + error.message
+      });
       return null;
     }
   }
@@ -372,7 +345,7 @@ class OrderController {
       if (socket.driverData && order.assignedDriver === socket.driverData.uid) {
         isAuthorized = true;
         updaterType = 'driver';
-      } else if (socket.customerData && order.customerId === socket.customerData.customerId) {
+      } else if (socket.customerData && order.customer.id === socket.customerData.customerId) {
         isAuthorized = true;
         updaterType = 'customer';
       } else if (socket.adminData) {
@@ -388,7 +361,7 @@ class OrderController {
       const updatedStatus = orderService.updateOrderStatus(orderId, status, details || {});
 
       // Phản hồi cho người cập nhật
-      socket.emit('order_status_updated_confirmation', {
+      SocketResponse.emitSuccess(socket, 'order_status_updated_confirmation', {
         status: 'success',
         orderId,
         orderStatus: status,
@@ -397,7 +370,7 @@ class OrderController {
 
       // Thông báo cho các bên liên quan
       // 1. Thông báo cho khách hàng
-      io.to(`customer_${order.customerId}`).emit('order_status_updated', {
+      SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_status_updated', {
         orderId,
         status,
         updatedBy: updaterType,
@@ -409,7 +382,7 @@ class OrderController {
       if (order.assignedDriver) {
         const driver = driverService.getDriverByUuid(order.assignedDriver);
         if (driver && driver.socketId) {
-          io.to(driver.socketId).emit('order_status_updated', {
+          SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_status_updated', {
             orderId,
             status,
             updatedBy: updaterType,
@@ -422,7 +395,9 @@ class OrderController {
       return updatedStatus;
     } catch (error) {
       console.error('Lỗi khi cập nhật trạng thái đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi cập nhật trạng thái: ' + error.message });
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_STATUS_UPDATE_FAILED, {
+        message: 'Lỗi khi cập nhật trạng thái: ' + error.message
+      });
       return null;
     }
   }
@@ -454,7 +429,7 @@ class OrderController {
       if (socket.driverData && order.assignedDriver === socket.driverData.uid) {
         isAuthorized = true;
         cancelerType = 'driver';
-      } else if (socket.customerData && order.customerId === socket.customerData.customerId) {
+      } else if (socket.customerData && order.customer.id === socket.customerData.customerId) {
         isAuthorized = true;
         cancelerType = 'customer';
       } else if (socket.adminData) {
@@ -473,7 +448,7 @@ class OrderController {
       });
 
       // Phản hồi cho người hủy
-      socket.emit('order_cancelled_confirmation', {
+      SocketResponse.emitSuccess(socket, 'order_cancelled_confirmation', {
         status: 'success',
         orderId,
         timestamp: new Date().toISOString()
@@ -481,7 +456,7 @@ class OrderController {
 
       // Thông báo cho các bên liên quan
       // 1. Thông báo cho khách hàng
-      io.to(`customer_${order.customerId}`).emit('order_cancelled', {
+      SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_cancelled', {
         orderId,
         cancelledBy: cancelerType,
         reason: reason || 'Không có lý do',
@@ -492,7 +467,7 @@ class OrderController {
       if (order.assignedDriver) {
         const driver = driverService.getDriverByUuid(order.assignedDriver);
         if (driver && driver.socketId) {
-          io.to(driver.socketId).emit('order_cancelled', {
+          SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_cancelled', {
             orderId,
             cancelledBy: cancelerType,
             reason: reason || 'Không có lý do',
@@ -504,7 +479,9 @@ class OrderController {
       return updatedOrder;
     } catch (error) {
       console.error('Lỗi khi hủy đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi hủy đơn hàng: ' + error.message });
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_CANCELLATION_FAILED, {
+        message: 'Lỗi khi hủy đơn hàng: ' + error.message
+      });
       return null;
     }
   }
@@ -529,7 +506,7 @@ class OrderController {
       }
 
       // Phản hồi thông tin đơn hàng
-      socket.emit('order_info', {
+      SocketResponse.emitSuccess(socket, 'order_info', {
         status: 'success',
         order: order.getOrderData(),
         timestamp: new Date().toISOString()
@@ -538,59 +515,14 @@ class OrderController {
       return order;
     } catch (error) {
       console.error('Lỗi khi lấy thông tin đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi lấy thông tin đơn hàng: ' + error.message });
-      return null;
-    }
-  }
-
-  /**
-   * Lấy danh sách đơn hàng theo điều kiện
-   * @param {Object} socket - Socket.IO socket
-   * @param {Object} data - Dữ liệu yêu cầu
-   */
-  async getOrdersList (socket, data) {
-    try {
-      let orders = [];
-
-      // Lấy đơn hàng của khách hàng
-      if (data.customerId) {
-        orders = orderService.getOrdersByCustomerId(data.customerId);
-      }
-      // Lấy đơn hàng của tài xế
-      else if (data.driverId) {
-        orders = orderService.getOrdersByDriverId(data.driverId);
-      }
-      // Lấy đơn hàng theo trạng thái
-      else if (data.status) {
-        orders = orderService.getOrdersByStatus(data.status);
-      }
-      // Lấy tất cả đơn hàng (chỉ admin mới được phép)
-      else if (socket.adminData) {
-        orders = orderService.getAllOrders();
-      } else {
-        throw new Error('Không có quyền xem danh sách đơn hàng');
-      }
-
-      // Lọc theo các tiêu chí khác nếu cần
-      if (data.filters) {
-        // Có thể thêm logic lọc theo thời gian, khu vực, v.v.
-      }
-
-      // Phản hồi danh sách đơn hàng
-      socket.emit('orders_list', {
-        status: 'success',
-        count: orders.length,
-        orders: orders.map(order => order.getOrderData()),
-        timestamp: new Date().toISOString()
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_INFO_FETCH_FAILED, {
+        message: 'Lỗi khi lấy thông tin đơn hàng: ' + error.message
       });
-
-      return orders;
-    } catch (error) {
-      console.error('Lỗi khi lấy danh sách đơn hàng:', error);
-      socket.emit('error', { message: 'Lỗi khi lấy danh sách đơn hàng: ' + error.message });
       return null;
     }
-  }
+  } 
+
+
 }
 
 module.exports = new OrderController(); 
