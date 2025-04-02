@@ -1,0 +1,79 @@
+{
+  "id": 45,
+  "code": "#6561912368",
+  "total_price": 10,
+  "currency": "eur",
+  "payment_type": "ship",
+  "payment_status": "pending",
+  "process_status": "driverAccepted",
+  "note": null,
+  "payment": {
+    "id": 5,
+    "name": "Cash",
+    "icon_url": "storage/images/news/cash.png",
+    "is_active": 1,
+    "is_order_payment": 1
+  },
+  "store": {
+    "id": 15,
+    "name": "Leo Rooftop",
+    "address": "Rákóczi út, Budapest 1072, Hungary",
+    "phone": "+3687446246",
+    "avatar_image": "storage/images/stores/2025-03-30-22-14-34-image-picker-c85e9418-051c-4e8d-864b-9b4a7ae920c3-11239-00000269e0e5d3c2.webp",
+    "facade_image": "storage/images/stores/2025-03-30-22-14-34-image-picker-c85e9418-051c-4e8d-864b-9b4a7ae920c3-11239-00000269e0e5d3c2.webp",
+    "street": "Rákóczi út",
+    "zip": "1072",
+    "city": "Budapest",
+    "state": "Budapest",
+    "country": "Hungary",
+    "country_code": "HUN",
+    "lat": 47.49661,
+    "lng": 19.06875
+  },
+  "customer": {
+    "id": 16,
+    "uid": null,
+    "name": null,
+    "avatar": "images/user.png",
+    "phone": "+84959595959",
+    "email": null
+  },
+  "driver": null,
+  "items": [
+    {
+      "id": 45,
+      "price": 10,
+      "quantity": 1,
+      "product": {
+        "id": 19,
+        "name": "Hulla",
+        "image": "storage/images/products/2025-03-30-23-48-01-image-picker-c3c9c727-4f92-47b5-8756-f1bd62625037-11637-00000277b873f5de.jpg",
+        "price": 10,
+        "price_compare": 15,
+        "description": "Hello Budapest, My name is Leo, Your Highness. We haven’t met yet, but I finally have arrived in Budapest and I would like to let you in some secrets about me, just to make sure you will recognize me when the time will come. I have a very strong feeling about you and me spending this summer together. So, who am I… I am coming from a large and highly sophisticated family, but if I am honest I was always the black sheep around. Nothing serious - of course, I mean from my part. :P I am eager to swim against the flow and to do what others may not even dream or think of trying. I love to travel, to get to know other cultures and people from all around the world. I love to eat…oh my God all those amazing flavors and colors of the world. If there’s food, there have to be drinks. Cocktails, wines, bubbles, champagne - I can handle them all, just make sure I have some friends around ;) Please reserve your table before arriving. Our kitchen is open till 10PM.Last call for drinks in the bar 11PM",
+        "variations": []
+      },
+      "variations": [],
+      "toppings": []
+    }
+  ],
+  "fee": 0,
+  "price_tip": 0,
+  "distance": 1,
+  "phone": null,
+  "street": "Rákóczi út 24.",
+  "zip": "1072",
+  "city": "Budapest",
+  "state": "Budapest",
+  "country": "Hungary",
+  "country_code": "HU",
+  "lat": 47.495986,
+  "lng": 19.065386,
+  "address": "Rákóczi út 24., Budapest",
+  "voucher": null,
+  "voucher_value": 0,
+  "time_order": "02/04/2025 21:55",
+  "time_pickup_estimate": null,
+  "time_pickup": null,
+  "time_delivery": null
+}

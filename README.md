@@ -86,7 +86,7 @@ npm run dev
 ### Sự kiện Tài xế
 
 - `update_location` - Cập nhật vị trí tài xế
-- `driver_status_update` - Cập nhật trạng thái tài xế (online/offline)
+- `driver_update_status` - Cập nhật trạng thái tài xế (online/offline)
 
 ### Sự kiện Đơn hàng
 

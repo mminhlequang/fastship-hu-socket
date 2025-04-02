@@ -31,6 +31,12 @@
       background-color: #f9f9f9;
     }
 
+    @media screen and (max-width: 768px) {
+      .panel {
+        width: 100%;
+      }
+    }
+
     h2 {
       margin-top: 0;
       color: #333;
@@ -119,32 +125,76 @@
     <div class="panel">
       <h2>Khách hàng</h2>
       <div class="form-group">
-        <label for="customer-id">ID Khách hàng:</label>
-        <input type="text" id="customer-id" value="CUSTOMER123">
+        <label for="customer-token">Token Khách hàng:</label>
+        <input type="text" id="customer-token" value="TOKEN123">
+      </div>
+      <div class="form-group">
+        <label for="order-json">Order JSON:</label>
+        <textarea id="order-json" style="height: 150px; font-family: monospace; font-size: 12px;">
+{
+  "id": 45,
+  "code": "#6561912368",
+  "total_price": 10,
+  "currency": "eur",
+  "payment_type": "ship",
+  "payment_status": "pending",
+  "process_status": "driverAccepted",
+  "note": "Hàng dễ vỡ, xin nhẹ tay",
+  "payment": {
+    "id": 5,
+    "name": "Cash",
+    "icon_url": "storage/images/news/cash.png",
+    "is_active": 1,
+    "is_order_payment": 1
+  },
+  "store": {
+    "id": 15,
+    "name": "Leo Rooftop",
+    "address": "Rákóczi út, Budapest 1072, Hungary",
+    "phone": "+3687446246",
+    "avatar_image": "storage/images/stores/image.webp",
+    "facade_image": "storage/images/stores/image.webp",
+    "street": "Rákóczi út",
+    "zip": "1072",
+    "city": "Budapest",
+    "state": "Budapest",
+    "country": "Hungary",
+    "country_code": "HUN",
+    "lat": 47.49661,
+    "lng": 19.06875
+  },
+  "customer": {
+    "id": 16,
+    "uid": null,
+    "name": null,
+    "avatar": "images/user.png",
+    "phone": "+84959595959",
+    "email": null
+  },
+  "driver": null,
+  "items": [],
+  "lat": 47.495986,
+  "lng": 19.065386,
+  "address": "Rákóczi út 24., Budapest"
+}
+        </textarea>
+      </div>
+      <div class="form-group">
+        <button id="load-order-json" class="btn btn-blue">Load JSON từ File</button>
+        <button id="validate-json" class="btn">Kiểm tra JSON</button>
       </div>
       <button id="connect-customer" class="btn">Kết nối</button>
       <div id="customer-status" class="alert">Chưa kết nối</div>
 
-      <h3>Tạo đơn hàng mới</h3>
-      <div class="form-group">
-        <label for="pickup-location">Địa điểm đón:</label>
-        <input type="text" id="pickup-location" value="10.762622, 106.660172">
-      </div>
-      <div class="form-group">
-        <label for="dropoff-location">Địa điểm trả:</label>
-        <input type="text" id="dropoff-location" value="10.773831, 106.704895">
-      </div>
-      <div class="form-group">
-        <label for="order-notes">Ghi chú:</label>
-        <textarea id="order-notes">Hàng dễ vỡ, xin nhẹ tay</textarea>
-      </div>
+      <h3>Thông tin đơn hàng</h3>
+      <div id="order-details-preview"></div>
       <div class="form-group">
         <label><input type="checkbox" id="find-driver" checked> Tự động tìm tài xế</label>
       </div>
       <button id="create-order" class="btn">Tạo đơn hàng</button>
       <button id="cancel-order" class="btn btn-red" disabled>Hủy đơn hàng</button>
 
-      <h3>Thông tin đơn hàng</h3>
+      <h3>Trạng thái đơn hàng</h3>
       <div id="customer-order-info">Chưa có đơn hàng</div>
 
       <h3>Nhật ký sự kiện</h3>
@@ -162,7 +212,7 @@
 
       <div class="form-group">
         <label for="driver-location">Vị trí hiện tại:</label>
-        <input type="text" id="driver-location" value="10.763622, 106.662172">
+        <input type="text" id="driver-location" value="47.497, 19.067">
       </div>
       <button id="update-location" class="btn" disabled>Cập nhật vị trí</button>
       <div class="form-group">
@@ -170,6 +220,13 @@
         <select id="driver-online-status" disabled>
           <option value="online">Online</option>
           <option value="offline">Offline</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Trạng thái bận:</label>
+        <select id="driver-busy-status" disabled>
+          <option value="false">Không bận</option>
+          <option value="true">Đang bận</option>
         </select>
       </div>
       <button id="update-status" class="btn" disabled>Cập nhật trạng thái</button>
@@ -247,11 +304,36 @@
       }
     }
 
+    // Các trạng thái đơn hàng
+    const ORDER_STATUS = {
+      PENDING: 'pending',
+      FIND_DRIVER: 'findDriver',
+      DRIVER_ACCEPTED: 'driverAccepted',
+      STORE_ACCEPTED: 'storeAccepted',
+      DRIVER_ARRIVED_STORE: 'driverArrivedStore',
+      DRIVER_PICKED: 'driverPicked',
+      DRIVER_DELIVERING: 'driverDelivering',
+      DRIVER_ARRIVED_DESTINATION: 'driverArrivedDestination',
+      COMPLETED: 'completed',
+      CANCELLED: 'cancelled'
+    };
+
     // Kết nối socket khách hàng
     document.getElementById('connect-customer').addEventListener('click', () => {
-      const customerId = document.getElementById('customer-id').value;
-      if (!customerId) {
-        alert('Vui lòng nhập ID khách hàng');
+      const customerToken = document.getElementById('customer-token').value;
+      const orderJson = document.getElementById('order-json').value;
+
+      let orderData;
+      try {
+        orderData = JSON.parse(orderJson.trim());
+      } catch (e) {
+        alert('JSON không hợp lệ. Vui lòng kiểm tra lại.');
+        logCustomerEvent('Lỗi: JSON không hợp lệ - ' + e.message);
+        return;
+      }
+
+      if (!customerToken) {
+        alert('Vui lòng nhập token khách hàng');
         return;
       }
 
@@ -263,12 +345,20 @@
       reconnectAttempts = 0;
       customerSocket = io(SOCKET_URL, {
         reconnectionAttempts: 3,
-        timeout: 10000
+        timeout: 10000,
+        auth: {
+          token: customerToken
+        }
       });
 
       customerSocket.on('connect', () => {
         logCustomerEvent('Đã kết nối đến server: ' + SOCKET_URL);
-        customerSocket.emit('authenticate_customer', { customerId });
+        customerSocket.emit('authenticate_customer', {
+          token: customerToken
+        });
+
+        // Hiển thị thông tin đơn hàng preview
+        displayOrderPreview(orderData);
       });
 
       customerSocket.on('authentication_success', (data) => {
@@ -282,69 +372,24 @@
         showStatus('customer-status', 'Lỗi xác thực', false);
       });
 
-      customerSocket.on('order_created', (data) => {
-        logCustomerEvent('Đơn hàng đã được tạo: ' + JSON.stringify(data));
-        currentOrderId = data.orderId;
-        updateCustomerOrderInfo(data.order);
-        document.getElementById('cancel-order').disabled = false;
-      });
+      customerSocket.on('create_order_result', (data) => {
+        logCustomerEvent('Kết quả tạo đơn hàng: ' + JSON.stringify(data));
 
-      customerSocket.on('find_driver_result', (data) => {
-        logCustomerEvent('Kết quả tìm tài xế: ' + JSON.stringify(data));
-        if (data.status === 'success') {
-          updateCustomerOrderInfo({ ...data, driverFound: true });
+        if (data.id) {
+          currentOrderId = data.id;
+          document.getElementById('cancel-order').disabled = false;
         }
-      });
 
-      customerSocket.on('find_driver_start', (data) => {
-        logCustomerEvent('Bắt đầu tìm tài xế: ' + JSON.stringify(data));
-        updateCustomerOrderStatus({
-          status: 'finding_driver',
-          message: `Đang tìm tài xế (${data.driversCount} tài xế khả dụng)`
-        });
-      });
+        if (data.process_status) {
+          updateCustomerOrderStatus({ status: data.process_status, details: data });
+        }
 
-      customerSocket.on('waiting_driver_response', (data) => {
-        logCustomerEvent('Đang chờ phản hồi từ tài xế: ' + JSON.stringify(data));
-        updateCustomerOrderStatus({
-          status: 'waiting_driver',
-          driverId: data.driverId,
-          driverInfo: data.driverInfo,
-          responseTimeout: data.responseTimeout,
-          message: `Đang chờ tài xế (${data.driverInfo?.distance || '?'}) phản hồi, còn ${data.responseTimeout}s`
-        });
-
-        let timeLeft = data.responseTimeout;
-        const countdownInterval = setInterval(() => {
-          timeLeft--;
-          if (timeLeft <= 0) {
-            clearInterval(countdownInterval);
-          } else {
-            updateCustomerOrderStatus({
-              status: 'waiting_driver',
-              driverId: data.driverId,
-              driverInfo: data.driverInfo,
-              responseTimeout: timeLeft,
-              message: `Đang chờ tài xế (${data.driverInfo?.distance || '?'}) phản hồi, còn ${timeLeft}s`
-            });
+        if (data.find_driver_status) {
+          logCustomerEvent('Trạng thái tìm tài xế: ' + data.find_driver_status);
+          if (data.drivers && data.drivers.length > 0) {
+            logCustomerEvent('Đã tìm thấy ' + data.drivers.length + ' tài xế gần đó');
           }
-        }, 1000);
-      });
-
-      customerSocket.on('driver_response_timeout', (data) => {
-        logCustomerEvent('Tài xế không phản hồi trong thời gian quy định: ' + JSON.stringify(data));
-        updateCustomerOrderStatus({
-          status: 'driver_timeout',
-          message: 'Tài xế không phản hồi, đang tìm tài xế khác'
-        });
-      });
-
-      customerSocket.on('find_driver_failed', (data) => {
-        logCustomerEvent('Không tìm được tài xế: ' + JSON.stringify(data));
-        updateCustomerOrderStatus({
-          status: 'find_driver_failed',
-          message: 'Không tìm được tài xế phù hợp cho đơn hàng'
-        });
+        }
       });
 
       customerSocket.on('order_status_updated', (data) => {
@@ -392,33 +437,97 @@
         return;
       }
 
-      const pickupLocation = document.getElementById('pickup-location').value;
-      const dropoffLocation = document.getElementById('dropoff-location').value;
-      const notes = document.getElementById('order-notes').value;
-      const findDriver = document.getElementById('find-driver').checked;
+      const orderJson = document.getElementById('order-json').value;
+      let orderData;
 
-      const pickupCoords = parseCoordinates(pickupLocation);
-      const dropoffCoords = parseCoordinates(dropoffLocation);
-
-      if (!pickupCoords || !dropoffCoords) {
+      try {
+        orderData = JSON.parse(orderJson.trim());
+      } catch (e) {
+        alert('JSON không hợp lệ. Vui lòng kiểm tra lại.');
+        logCustomerEvent('Lỗi: JSON không hợp lệ - ' + e.message);
         return;
       }
 
-      const [pickupLat, pickupLng] = pickupCoords;
-      const [dropoffLat, dropoffLng] = dropoffCoords;
+      const findDriver = document.getElementById('find-driver').checked;
 
-      customerSocket.emit('create_order', {
-        customerId: document.getElementById('customer-id').value,
-        orderDetails: {
-          pickupLocation: { lat: pickupLat, lng: pickupLng },
-          dropoffLocation: { lat: dropoffLat, lng: dropoffLng },
-          notes: notes
-        },
-        findDriver: findDriver
-      });
+      // Gửi đơn hàng với JSON trực tiếp
+      customerSocket.emit('create_order', orderData);
 
-      logCustomerEvent('Đang tạo đơn hàng...');
+      logCustomerEvent('Đang tạo đơn hàng từ JSON...');
     });
+
+    // Tải JSON từ file
+    document.getElementById('load-order-json').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+
+      input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function (event) {
+          try {
+            const jsonContent = event.target.result;
+            // Kiểm tra JSON hợp lệ
+            JSON.parse(jsonContent);
+            document.getElementById('order-json').value = jsonContent;
+            logCustomerEvent('Đã tải JSON từ file: ' + file.name);
+
+            // Hiển thị preview
+            displayOrderPreview(JSON.parse(jsonContent));
+          } catch (e) {
+            alert('File JSON không hợp lệ: ' + e.message);
+            logCustomerEvent('Lỗi khi tải file JSON: ' + e.message);
+          }
+        };
+
+        input.click();
+      };
+    });
+
+    // Kiểm tra JSON
+    document.getElementById('validate-json').addEventListener('click', () => {
+      try {
+        const jsonContent = document.getElementById('order-json').value;
+        const parsed = JSON.parse(jsonContent);
+        alert('JSON hợp lệ!');
+        displayOrderPreview(parsed);
+      } catch (e) {
+        alert('JSON không hợp lệ: ' + e.message);
+      }
+    });
+
+    // Hiển thị thông tin đơn hàng preview
+    function displayOrderPreview (orderData) {
+      const previewElement = document.getElementById('order-details-preview');
+
+      if (!orderData) {
+        previewElement.innerHTML = '<div class="alert">Không có dữ liệu đơn hàng</div>';
+        return;
+      }
+
+      let html = `
+        <div style="border: 1px solid #ddd; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+          <div><strong>Mã đơn:</strong> ${orderData.code || orderData.id || '-'}</div>
+          <div><strong>Tổng tiền:</strong> ${orderData.total_price || 0} ${orderData.currency || ''}</div>
+      `;
+
+      if (orderData.store) {
+        html += `
+          <div><strong>Cửa hàng:</strong> ${orderData.store.name || '-'}</div>
+          <div><strong>Địa chỉ lấy hàng:</strong> ${orderData.store.address || '-'}</div>
+        `;
+      }
+
+      html += `
+        <div><strong>Địa chỉ giao hàng:</strong> ${orderData.address || '-'}</div>
+        <div><strong>Ghi chú:</strong> ${orderData.note || '-'}</div>
+      </div>
+      `;
+
+      previewElement.innerHTML = html;
+    }
 
     // Hủy đơn hàng
     document.getElementById('cancel-order').addEventListener('click', () => {
@@ -448,11 +557,13 @@
         driverSocket.disconnect();
       }
 
-
       reconnectAttempts = 0;
       driverSocket = io(SOCKET_URL, {
         reconnectionAttempts: 3,
-        timeout: 10000
+        timeout: 10000,
+        auth: {
+          token: token
+        }
       });
 
       driverSocket.on('connect', () => {
@@ -465,10 +576,14 @@
         showStatus('driver-status', 'Đã kết nối', true);
         document.getElementById('update-location').disabled = false;
         document.getElementById('driver-online-status').disabled = false;
+        document.getElementById('driver-busy-status').disabled = false;
         document.getElementById('update-status').disabled = false;
 
         // Tự động cập nhật trạng thái online
-        driverSocket.emit('driver_status_update', { status: 'online' });
+        driverSocket.emit('driver_update_status', { status: 'online' });
+
+        // Cập nhật vị trí ban đầu
+        updateDriverLocation();
       });
 
       driverSocket.on('authentication_error', (data) => {
@@ -484,74 +599,7 @@
         logDriverEvent('Vị trí đã cập nhật: ' + JSON.stringify(data));
       });
 
-      // Xử lý yêu cầu đơn hàng mới (30s để phản hồi)
-      driverSocket.on('new_order_request', (data) => {
-        logDriverEvent('Yêu cầu đơn hàng mới: ' + JSON.stringify(data));
-
-        const orderId = data.data.orderId;
-
-        if (!orderId) {
-          logDriverEvent('Lỗi: Dữ liệu đơn hàng không hợp lệ, thiếu orderId');
-          return;
-        }
-
-        // Cập nhật mã đơn hàng hiện tại
-        currentOrderId = orderId;
-        logDriverEvent('Đã lưu mã đơn hàng: ' + currentOrderId);
-
-        // Cập nhật thông tin đơn hàng
-        updateDriverOrderInfo(data.data.order);
-
-        // Kích hoạt các nút chức năng
-        document.getElementById('accept-order').disabled = false;
-        document.getElementById('reject-order').disabled = false;
-
-        // Hiển thị đếm ngược thời gian
-        let timeLeft = data.responseTimeout;
-        const countdownTimer = document.createElement('div');
-        countdownTimer.id = 'driver-countdown';
-        countdownTimer.style.fontWeight = 'bold';
-        countdownTimer.style.color = 'red';
-        countdownTimer.textContent = `⏱️ Thời gian còn lại: ${timeLeft}s`;
-
-        const orderInfoDiv = document.getElementById('driver-order-info');
-        if (orderInfoDiv.querySelector('#driver-countdown')) {
-          orderInfoDiv.querySelector('#driver-countdown').remove();
-        }
-        orderInfoDiv.prepend(countdownTimer);
-
-        const countdownInterval = setInterval(() => {
-          timeLeft--;
-          if (timeLeft <= 0) {
-            clearInterval(countdownInterval);
-            countdownTimer.textContent = '⏱️ Hết thời gian phản hồi!';
-          } else {
-            countdownTimer.textContent = `⏱️ Thời gian còn lại: ${timeLeft}s`;
-          }
-        }, 1000);
-      });
-
-      // Xử lý khi hết thời gian phản hồi
-      driverSocket.on('order_request_timeout', (data) => {
-        logDriverEvent('Hết thời gian phản hồi đơn hàng: ' + JSON.stringify(data));
-        if (data.orderId === currentOrderId) {
-          // Reset các nút và thông tin đơn hàng
-          document.getElementById('accept-order').disabled = true;
-          document.getElementById('reject-order').disabled = true;
-          const countdownTimer = document.getElementById('driver-countdown');
-          if (countdownTimer) {
-            countdownTimer.textContent = '⏱️ Hết thời gian phản hồi!';
-          }
-
-          // Sau 3 giây xóa thông tin đơn hàng
-          setTimeout(() => {
-            currentOrderId = null;
-            updateDriverOrderInfo(null);
-          }, 3000);
-        }
-      });
-
-      driverSocket.on('new_order_assigned', (data) => {
+      driverSocket.on('driver_new_order_request', (data) => {
         logDriverEvent('Đơn hàng mới được gán: ' + JSON.stringify(data));
         currentOrderId = data.orderId;
         updateDriverOrderInfo(data.order);
@@ -567,6 +615,10 @@
           document.getElementById('accept-order').disabled = true;
           document.getElementById('reject-order').disabled = true;
           document.getElementById('pickup-order').disabled = false;
+
+          // Cập nhật trạng thái bận
+          document.getElementById('driver-busy-status').value = 'true';
+          updateDriverStatus();
         } else if (data.orderStatus === 'rejected') {
           document.getElementById('accept-order').disabled = true;
           document.getElementById('reject-order').disabled = true;
@@ -587,6 +639,10 @@
         logDriverEvent('Đơn hàng đã bị hủy: ' + JSON.stringify(data));
         resetDriverOrderControls();
         updateDriverOrderStatus({ status: 'cancelled', details: data });
+
+        // Cập nhật trạng thái bận
+        document.getElementById('driver-busy-status').value = 'false';
+        updateDriverStatus();
       });
 
       driverSocket.on('error', (data) => {
@@ -614,7 +670,7 @@
     });
 
     // Cập nhật vị trí tài xế
-    document.getElementById('update-location').addEventListener('click', () => {
+    function updateDriverLocation () {
       if (!driverSocket) {
         alert('Vui lòng kết nối trước');
         return;
@@ -631,36 +687,39 @@
 
       driverSocket.emit('update_location', { latitude: lat, longitude: lng });
       logDriverEvent('Đang cập nhật vị trí...');
-    });
+    }
+
+    document.getElementById('update-location').addEventListener('click', updateDriverLocation);
 
     // Cập nhật trạng thái tài xế
-    document.getElementById('update-status').addEventListener('click', () => {
+    function updateDriverStatus () {
       if (!driverSocket) {
         alert('Vui lòng kết nối trước');
         return;
       }
 
-      const status = document.getElementById('driver-online-status').value;
-      driverSocket.emit('driver_status_update', { status });
-      logDriverEvent('Đang cập nhật trạng thái: ' + status);
-    });
+      const onlineStatus = document.getElementById('driver-online-status').value;
+      const busyStatus = document.getElementById('driver-busy-status').value === 'true';
+
+      // Cập nhật trạng thái online/offline
+      driverSocket.emit('driver_update_status', {
+        status: onlineStatus,
+        isBusy: busyStatus
+      });
+
+      logDriverEvent('Đang cập nhật trạng thái: ' + onlineStatus + ', Bận: ' + busyStatus);
+    }
+
+    document.getElementById('update-status').addEventListener('click', updateDriverStatus);
 
     // Nhận đơn hàng
     document.getElementById('accept-order').addEventListener('click', () => {
-      if (!driverSocket) {
-        alert('Chưa kết nối socket tài xế, vui lòng kết nối trước');
+      if (!driverSocket || !currentOrderId) {
+        alert('Không có đơn hàng để nhận');
         return;
       }
 
-      if (!currentOrderId) {
-        // Hiển thị thông tin chi tiết về lỗi
-        logDriverEvent('Lỗi: Không tìm thấy mã đơn hàng (currentOrderId không có giá trị)');
-        alert('Không tìm thấy mã đơn hàng để nhận');
-        return;
-      }
-
-      logDriverEvent('Đang gửi yêu cầu nhận đơn: ' + currentOrderId);
-      driverSocket.emit('driver_order_response', {
+      driverSocket.emit('driver_new_order_response', {
         orderId: currentOrderId,
         status: 'accepted'
       });
@@ -675,7 +734,7 @@
         return;
       }
 
-      driverSocket.emit('driver_order_response', {
+      driverSocket.emit('driver_new_order_response', {
         orderId: currentOrderId,
         status: 'rejected',
         reason: 'Đang bận việc khác'
@@ -693,7 +752,7 @@
 
       driverSocket.emit('update_order_status', {
         orderId: currentOrderId,
-        status: 'picked',
+        status: ORDER_STATUS.DRIVER_PICKED,
         details: {
           pickupTime: new Date().toISOString()
         }
@@ -713,7 +772,7 @@
 
       driverSocket.emit('update_order_status', {
         orderId: currentOrderId,
-        status: 'in_progress',
+        status: ORDER_STATUS.DRIVER_DELIVERING,
         details: {
           startDeliveryTime: new Date().toISOString()
         }
@@ -733,7 +792,7 @@
 
       driverSocket.emit('update_order_status', {
         orderId: currentOrderId,
-        status: 'completed',
+        status: ORDER_STATUS.COMPLETED,
         details: {
           completeTime: new Date().toISOString()
         }
@@ -741,58 +800,64 @@
 
       logDriverEvent('Đang cập nhật trạng thái: đã hoàn thành');
       resetDriverOrderControls();
+
+      // Cập nhật trạng thái bận
+      document.getElementById('driver-busy-status').value = 'false';
+      updateDriverStatus();
     });
 
     // Helper Functions
     function logCustomerEvent (message) {
-      appendLog('customer-log', message);
-    }
-
-    function logDriverEvent (message) {
-      appendLog('driver-log', message);
-    }
-
-    function appendLog (elementId, message) {
-      const now = new Date();
-      const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-      const logElement = document.getElementById(elementId);
-      const logLine = document.createElement('div');
-      logLine.innerHTML = `<small>[${timestamp}]</small> ${message}`;
-      logElement.appendChild(logLine);
+      const logElement = document.getElementById('customer-log');
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
       logElement.scrollTop = logElement.scrollHeight;
     }
 
-    function showStatus (elementId, message, success) {
-      const element = document.getElementById(elementId);
-      element.style.display = 'block';
-      element.textContent = message;
-      element.className = success ? 'alert success' : 'alert';
+    function logDriverEvent (message) {
+      const logElement = document.getElementById('driver-log');
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+      logElement.scrollTop = logElement.scrollHeight;
     }
 
-    function updateCustomerOrderInfo (order) {
-      if (!order) {
-        document.getElementById('customer-order-info').innerHTML = 'Chưa có đơn hàng';
+    function showStatus (elementId, message, isSuccess) {
+      const statusElement = document.getElementById(elementId);
+      statusElement.textContent = message;
+      statusElement.style.display = 'block';
+
+      if (isSuccess) {
+        statusElement.classList.add('success');
+        statusElement.classList.remove('alert');
+      } else {
+        statusElement.classList.add('alert');
+        statusElement.classList.remove('success');
+      }
+    }
+
+    function updateCustomerOrderInfo (orderData) {
+      const infoElement = document.getElementById('customer-order-info');
+      if (!orderData) {
+        infoElement.innerHTML = 'Chưa có đơn hàng';
         return;
       }
 
       let html = `
-        <div>
-          <p><strong>Mã đơn:</strong> ${order.orderId || currentOrderId}</p>
-          <p><strong>Trạng thái:</strong> ${translateStatus(order.status || 'pending')}</p>
+        <div><strong>Mã đơn:</strong> ${orderData.id || '-'}</div>
+        <div><strong>Trạng thái:</strong> ${getStatusText(orderData.status)}</div>
       `;
 
-      if (order.driverId || order.driverFound) {
+      if (orderData.driverFound) {
+        const driverInfo = orderData.driverInfo || {};
+        const profile = driverInfo.profile || {};
+
         html += `
-          <div>
-            <p><strong>Tài xế:</strong> ${order.driverId || 'Đã tìm thấy'}</p>
-            ${order.driverInfo ? `<p><strong>Khoảng cách:</strong> ${order.driverInfo.distance}</p>` : ''}
-          </div>
+          <div><strong>Tài xế:</strong> ${profile.name || driverInfo.driverId || orderData.driverId || '-'}</div>
+          <div><strong>Khoảng cách:</strong> ${driverInfo.distance || '-'}</div>
         `;
       }
 
-      html += '</div>';
-
-      document.getElementById('customer-order-info').innerHTML = html;
+      infoElement.innerHTML = html;
     }
 
     function updateDriverOrderInfo (orderData) {
@@ -802,99 +867,43 @@
         return;
       }
 
-      // Đảm bảo orderId được cập nhật toàn cục để sử dụng khi nhấn nút
-      if (orderData.orderId) {
-        currentOrderId = orderData.orderId;
-        logDriverEvent('Cập nhật currentOrderId: ' + currentOrderId);
-      }
-
       let html = `
-        <div><strong>Mã đơn:</strong> ${orderData.orderId || '-'}</div>
-        <div><strong>Khách hàng:</strong> ${orderData.customerId || '-'}</div>
-        <div><strong>Trạng thái:</strong> ${getStatusText(orderData.status)}</div>
-        <div><strong>Ghi chú:</strong> ${orderData.orderDetails?.notes || '-'}</div>
+        <div><strong>Mã đơn:</strong> ${orderData.id || '-'}</div>
+        <div><strong>Khách hàng:</strong> ${orderData.customer?.id || '-'}</div>
+        <div><strong>Trạng thái:</strong> ${getStatusText(orderData.process_status)}</div>
+        <div><strong>Ghi chú:</strong> ${orderData.note || '-'}</div>
       `;
 
-      if (orderData.orderDetails?.pickupLocation) {
-        const pickup = orderData.orderDetails.pickupLocation;
-        html += `<div><strong>Điểm đón:</strong> ${pickup.lat}, ${pickup.lng}</div>`;
+      if (orderData.store) {
+        const store = orderData.store;
+        html += `<div><strong>Cửa hàng:</strong> ${store.name}</div>`;
+        html += `<div><strong>Địa chỉ cửa hàng:</strong> ${store.address}</div>`;
       }
 
-      if (orderData.orderDetails?.dropoffLocation) {
-        const dropoff = orderData.orderDetails.dropoffLocation;
-        html += `<div><strong>Điểm trả:</strong> ${dropoff.lat}, ${dropoff.lng}</div>`;
+      if (orderData.lat && orderData.lng) {
+        html += `<div><strong>Điểm giao:</strong> ${orderData.lat}, ${orderData.lng}</div>`;
       }
 
       infoElement.innerHTML = html;
     }
 
     function updateCustomerOrderStatus (data) {
-      const orderInfoElement = document.getElementById('customer-order-info');
+      const status = data.status;
+      const infoElement = document.getElementById('customer-order-info');
+      const statusText = getStatusText(status);
 
-      // Nếu không có khung thông tin đơn hàng, tạo mới
-      if (orderInfoElement.textContent === 'Chưa có đơn hàng') {
-        orderInfoElement.innerHTML = `
-          <div>
-            <p><strong>Mã đơn:</strong> ${data.orderId || currentOrderId}</p>
-            <p><strong>Trạng thái:</strong> ${translateStatus(data.status || 'pending')}</p>
-          </div>
-        `;
+      // Cập nhật phần hiển thị trạng thái
+      const currentHtml = infoElement.innerHTML;
+      const updatedHtml = currentHtml.replace(/<div><strong>Trạng thái:<\/strong>.*?<\/div>/, `<div><strong>Trạng thái:</strong> ${statusText}</div>`);
+
+      if (currentHtml !== updatedHtml) {
+        infoElement.innerHTML = updatedHtml;
+      } else if (infoElement.innerHTML === 'Chưa có đơn hàng' && data.details) {
+        updateCustomerOrderInfo(data.details);
       }
 
-      // Cập nhật trạng thái
-      const statusElement = orderInfoElement.querySelector('p:nth-child(2)');
-      if (statusElement) {
-        statusElement.innerHTML = `<strong>Trạng thái:</strong> ${translateStatus(data.status || 'pending')}`;
-
-        // Thêm phần thông tin bổ sung tùy theo trạng thái
-        if (data.status === 'finding_driver' || data.status === 'waiting_driver' || data.status === 'driver_timeout' || data.status === 'find_driver_failed') {
-          // Tìm phần tử thông tin tài xế nếu có
-          const driverInfoDiv = orderInfoElement.querySelector('div > div');
-
-          if (data.status === 'waiting_driver') {
-            // Hiển thị thông tin tài xế đang chờ phản hồi
-            if (driverInfoDiv) {
-              driverInfoDiv.innerHTML = `
-                <p><strong>Tài xế:</strong> ${data.driverId || 'Đang chờ phản hồi'}</p>
-                <p><strong>Khoảng cách:</strong> ${data.driverInfo?.distance || 'Không xác định'}</p>
-                <p class="driver-countdown" style="color: red; font-weight: bold;">⏱️ ${data.message || 'Đang chờ phản hồi'}</p>
-              `;
-            } else {
-              // Tạo mới nếu chưa có
-              const newDriverInfoDiv = document.createElement('div');
-              newDriverInfoDiv.innerHTML = `
-                <p><strong>Tài xế:</strong> ${data.driverId || 'Đang chờ phản hồi'}</p>
-                <p><strong>Khoảng cách:</strong> ${data.driverInfo?.distance || 'Không xác định'}</p>
-                <p class="driver-countdown" style="color: red; font-weight: bold;">⏱️ ${data.message || 'Đang chờ phản hồi'}</p>
-              `;
-              orderInfoElement.querySelector('div').appendChild(newDriverInfoDiv);
-            }
-          } else {
-            // Trạng thái tìm tài xế khác, chỉ hiển thị thông báo
-            if (driverInfoDiv) {
-              driverInfoDiv.innerHTML = `<p style="color: blue;">${data.message || translateStatus(data.status)}</p>`;
-            } else {
-              const newDriverInfoDiv = document.createElement('div');
-              newDriverInfoDiv.innerHTML = `<p style="color: blue;">${data.message || translateStatus(data.status)}</p>`;
-              orderInfoElement.querySelector('div').appendChild(newDriverInfoDiv);
-            }
-          }
-        } else if (data.status === 'accepted' && data.driverId) {
-          // Cập nhật thông tin tài xế đã chấp nhận
-          const driverInfoDiv = orderInfoElement.querySelector('div > div') || document.createElement('div');
-          driverInfoDiv.innerHTML = `
-            <p><strong>Tài xế:</strong> ${data.driverId}</p>
-            ${data.driverInfo ? `<p><strong>Thông tin:</strong> ${JSON.stringify(data.driverInfo)}</p>` : ''}
-          `;
-
-          if (!orderInfoElement.querySelector('div > div')) {
-            orderInfoElement.querySelector('div').appendChild(driverInfoDiv);
-          }
-        }
-      }
-
-      // Nếu đơn hàng hoàn thành hoặc hủy, cập nhật nút
-      if (['completed', 'cancelled'].includes(data.status)) {
+      // Cập nhật trạng thái nút hủy
+      if ([ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED].includes(status)) {
         document.getElementById('cancel-order').disabled = true;
       }
     }
@@ -906,18 +915,26 @@
 
       // Cập nhật phần hiển thị trạng thái
       const currentHtml = infoElement.innerHTML;
-      const updated = currentHtml.replace(/<div><strong>Trạng thái:<\/strong>.*?<\/div>/, `<div><strong>Trạng thái:</strong> ${statusText}</div>`);
-      infoElement.innerHTML = updated;
+      const updatedHtml = currentHtml.replace(/<div><strong>Trạng thái:<\/strong>.*?<\/div>/, `<div><strong>Trạng thái:</strong> ${statusText}</div>`);
+
+      if (currentHtml !== updatedHtml) {
+        infoElement.innerHTML = updatedHtml;
+      } else if (infoElement.innerHTML === 'Chưa có đơn hàng' && data.details) {
+        updateDriverOrderInfo(data.details);
+      }
 
       // Cập nhật trạng thái các nút
-      if (status === 'completed' || status === 'cancelled') {
+      if ([ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED].includes(status)) {
         resetDriverOrderControls();
         currentOrderId = null;
+
+        // Cập nhật trạng thái bận
+        document.getElementById('driver-busy-status').value = 'false';
+        updateDriverStatus();
       }
     }
 
     function resetDriverOrderControls () {
-      currentOrderId = null;
       document.getElementById('accept-order').disabled = true;
       document.getElementById('reject-order').disabled = true;
       document.getElementById('pickup-order').disabled = true;
@@ -926,22 +943,17 @@
     }
 
     function getStatusText (status) {
-      return translateStatus(status);
-    }
-
-    function translateStatus (status) {
       const statusMap = {
         'pending': 'Chờ xử lý',
-        'assigned': 'Đã gán tài xế',
-        'accepted': 'Tài xế đã nhận',
-        'picked': 'Đã lấy hàng',
-        'in_progress': 'Đang giao hàng',
+        'findDriver': 'Đang tìm tài xế',
+        'driverAccepted': 'Tài xế đã nhận',
+        'storeAccepted': 'Cửa hàng đã xác nhận',
+        'driverArrivedStore': 'Tài xế đã đến cửa hàng',
+        'driverPicked': 'Đã lấy hàng',
+        'driverDelivering': 'Đang giao hàng',
+        'driverArrivedDestination': 'Tài xế đã đến nơi giao',
         'completed': 'Đã hoàn thành',
-        'cancelled': 'Đã hủy',
-        'finding_driver': 'Đang tìm tài xế',
-        'waiting_driver': 'Đang chờ tài xế phản hồi',
-        'driver_timeout': 'Tài xế không phản hồi',
-        'find_driver_failed': 'Không tìm được tài xế'
+        'cancelled': 'Đã hủy'
       };
 
       return statusMap[status] || status || 'Không xác định';

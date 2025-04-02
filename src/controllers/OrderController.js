@@ -154,7 +154,7 @@ class OrderController {
       }
 
       // Gửi thông báo cho tài xế
-      SocketResponse.emitSuccessToRoom(io, driver.socketId, 'new_order_request', {
+      SocketResponse.emitSuccessToRoom(io, driver.socketId, 'driver_new_order_request', {
         orderId,
         order: order.getOrderData(),
         customer: {
@@ -485,44 +485,6 @@ class OrderController {
       return null;
     }
   }
-
-  /**
-   * Lấy thông tin đơn hàng
-   * @param {Object} socket - Socket.IO socket
-   * @param {Object} data - Dữ liệu yêu cầu
-   */
-  async getOrderInfo (socket, data) {
-    try {
-      const { orderId } = data;
-
-      if (!orderId) {
-        throw new Error('orderId là bắt buộc');
-      }
-
-      // Lấy thông tin đơn hàng
-      const order = orderService.getOrderById(orderId);
-      if (!order) {
-        throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
-      }
-
-      // Phản hồi thông tin đơn hàng
-      SocketResponse.emitSuccess(socket, 'order_info', {
-        status: 'success',
-        order: order.getOrderData(),
-        timestamp: new Date().toISOString()
-      });
-
-      return order;
-    } catch (error) {
-      console.error('Lỗi khi lấy thông tin đơn hàng:', error);
-      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_INFO_FETCH_FAILED, {
-        message: 'Lỗi khi lấy thông tin đơn hàng: ' + error.message
-      });
-      return null;
-    }
-  } 
-
-
 }
 
 module.exports = new OrderController(); 

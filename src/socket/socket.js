@@ -166,7 +166,7 @@ const setupSocketEvents = (io) => {
     });
 
     // Cập nhật vị trí tài xế
-    socket.on('update_location', async (data) => {
+    socket.on('driver_update_location', async (data) => {
       try {
         const location = await driverController.handleUpdateLocation(socket, data);
         // Cập nhật thời gian hoạt động cuối cùng
@@ -185,7 +185,7 @@ const setupSocketEvents = (io) => {
     });
 
     // Cập nhật trạng thái tài xế (online/offline)
-    socket.on('driver_status_update', async (data) => {
+    socket.on('driver_update_status', async (data) => {
       try {
         const status = data.status === 'online' ? 'online' : 'offline';
         logEvent(`Tài xế ${socket.id} cập nhật trạng thái: ${status}`);
@@ -198,13 +198,7 @@ const setupSocketEvents = (io) => {
           });
 
           // Cập nhật thời gian hoạt động cuối cùng
-          socket.lastActive = new Date();
-
-          // Phản hồi cho client
-          SocketResponse.emitSuccess(socket, 'driver_status_updated', {
-            status: status,
-            timestamp: new Date().toISOString()
-          });
+          socket.lastActive = new Date(); 
         } else {
           throw new Error('Tài xế chưa đăng ký');
         }
@@ -226,7 +220,7 @@ const setupSocketEvents = (io) => {
 
 
     // Phản hồi tài xế về đơn hàng
-    socket.on('driver_order_response', async (data) => {
+    socket.on('driver_new_order_response', async (data) => {
       try {
         logEvent(`Phản hồi đơn hàng ${data.orderId} từ tài xế ${socket.id}: ${data.status}`);
         await orderController.handleDriverResponse(socket, data, io);
@@ -260,30 +254,6 @@ const setupSocketEvents = (io) => {
         logEvent(`Lỗi khi hủy đơn hàng: ${error.message}`);
         SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_CANCEL_FAILED, {
           message: 'Lỗi khi hủy đơn hàng: ' + error.message
-        });
-      }
-    });
-
-    // Lấy thông tin đơn hàng
-    socket.on('get_order_info', async (data) => {
-      try {
-        await orderController.getOrderInfo(socket, data);
-      } catch (error) {
-        logEvent(`Lỗi khi lấy thông tin đơn hàng: ${error.message}`);
-        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_NOT_FOUND, {
-          message: 'Lỗi khi lấy thông tin đơn hàng: ' + error.message
-        });
-      }
-    });
-
-    // Lấy danh sách đơn hàng
-    socket.on('get_orders_list', async (data) => {
-      try {
-        await orderController.getOrdersList(socket, data);
-      } catch (error) {
-        logEvent(`Lỗi khi lấy danh sách đơn hàng: ${error.message}`);
-        SocketResponse.emitError(socket, 'error', MessageCodes.SERVER_ERROR, {
-          message: 'Lỗi khi lấy danh sách đơn hàng: ' + error.message
         });
       }
     });
