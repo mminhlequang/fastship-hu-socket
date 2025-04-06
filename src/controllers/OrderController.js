@@ -155,14 +155,8 @@ class OrderController {
 
       // Gửi thông báo cho tài xế
       SocketResponse.emitSuccessToRoom(io, driver.socketId, 'driver_new_order_request', {
-        orderId,
         order: order.getOrderData(),
-        customer: {
-          customerId: order.customer.id,
-          // Có thể thêm thông tin khách hàng nếu cần
-        },
-        distance: currentDriverInfo.distance ? `${currentDriverInfo.distance.toFixed(2)} km` : 'Không xác định',
-        responseTimeout: 30, // Thời gian chờ phản hồi (giây)
+        responseTimeout: 300, // Thời gian chờ phản hồi (giây)
         timestamp: new Date().toISOString()
       });
 
@@ -242,7 +236,7 @@ class OrderController {
           orderService.updateOrderStatus(orderId, AppOrderProcessStatus.DRIVER_ACCEPTED);
 
           // Thông báo cho tài xế
-          SocketResponse.emitSuccess(socket, 'order_response_confirmed', {
+          SocketResponse.emitSuccess(socket, 'driver_new_order_response_confirmed', {
             status: 'success',
             orderId,
             orderStatus: 'accepted',
@@ -279,7 +273,7 @@ class OrderController {
         orderService.markDriverRejected(orderId, socket.driverData.uid, reason || 'Không có lý do');
 
         // Thông báo cho tài xế
-        SocketResponse.emitSuccess(socket, 'order_response_confirmed', {
+        SocketResponse.emitSuccess(socket, 'driver_new_order_response_confirmed', {
           status: 'success',
           orderId,
           orderStatus: 'rejected',
@@ -322,13 +316,13 @@ class OrderController {
    */
   async updateOrderStatus (socket, data, io) {
     try {
-      const { orderId, status, details } = data;
+      const { orderId, processStatus, details } = data;
 
       if (!orderId) {
         throw new Error('orderId là bắt buộc');
       }
 
-      if (!status) {
+      if (!processStatus) {
         throw new Error('status là bắt buộc');
       }
 
@@ -338,33 +332,14 @@ class OrderController {
         throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
       }
 
-      // Kiểm tra người có quyền cập nhật không
-      let isAuthorized = false;
-      let updaterType = '';
-
-      if (socket.driverData && order.assignedDriver === socket.driverData.uid) {
-        isAuthorized = true;
-        updaterType = 'driver';
-      } else if (socket.customerData && order.customer.id === socket.customerData.customerId) {
-        isAuthorized = true;
-        updaterType = 'customer';
-      } else if (socket.adminData) {
-        isAuthorized = true;
-        updaterType = 'admin';
-      }
-
-      if (!isAuthorized) {
-        throw new Error('Không có quyền cập nhật đơn hàng này');
-      }
-
       // Cập nhật trạng thái
-      const updatedStatus = orderService.updateOrderStatus(orderId, status, details || {});
+      const updatedStatus = orderService.updateOrderStatus(orderId, processStatus, details || {});
 
       // Phản hồi cho người cập nhật
       SocketResponse.emitSuccess(socket, 'order_status_updated_confirmation', {
         status: 'success',
         orderId,
-        orderStatus: status,
+        processStatus: processStatus,
         timestamp: new Date().toISOString()
       });
 
@@ -372,8 +347,7 @@ class OrderController {
       // 1. Thông báo cho khách hàng
       SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_status_updated', {
         orderId,
-        status,
-        updatedBy: updaterType,
+        processStatus: processStatus,
         details: details || {},
         timestamp: new Date().toISOString()
       });
@@ -384,8 +358,7 @@ class OrderController {
         if (driver && driver.socketId) {
           SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_status_updated', {
             orderId,
-            status,
-            updatedBy: updaterType,
+            processStatus: processStatus,
             details: details || {},
             timestamp: new Date().toISOString()
           });
@@ -397,6 +370,55 @@ class OrderController {
       console.error('Lỗi khi cập nhật trạng thái đơn hàng:', error);
       SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_STATUS_UPDATE_FAILED, {
         message: 'Lỗi khi cập nhật trạng thái: ' + error.message
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Hủy đơn hàng
+   * @param {Object} socket - Socket.IO socket
+   * @param {Object} data - Dữ liệu hủy đơn
+   * @param {Object} io - Socket.IO server instance
+   */
+  async completeOrder (socket, data, io) {
+    try {
+      const { orderId } = data;
+
+      if (!orderId) {
+        throw new Error('orderId là bắt buộc');
+      }
+
+      // Lấy thông tin đơn hàng
+      const order = orderService.getOrderById(orderId);
+      if (!order) {
+        throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
+      }
+
+
+      orderService.callApiCompleteOrder(orderId, socket.accessToken);
+      // Hoàn thành đơn hàng
+      const updatedOrder = orderService.updateOrderStatus(orderId, AppOrderProcessStatus.COMPLETED);
+
+      // Phản hồi cho người hủy
+      SocketResponse.emitSuccess(socket, 'order_completed_confirmation', {
+        status: 'success',
+        orderId,
+        timestamp: new Date().toISOString()
+      });
+
+      // Thông báo cho các bên liên quan
+      // 1. Thông báo cho khách hàng
+      SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_completed', {
+        orderId,
+        timestamp: new Date().toISOString()
+      });
+
+      return updatedOrder;
+    } catch (error) {
+      console.error('Lỗi khi hoàn thành đơn hàng:', error);
+      SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_COMPLETE_FAILED, {
+        message: 'Lỗi khi hoàn thành đơn hàng: ' + error.message
       });
       return null;
     }
@@ -422,28 +444,9 @@ class OrderController {
         throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
       }
 
-      // Kiểm tra người có quyền hủy không
-      let isAuthorized = false;
-      let cancelerType = '';
-
-      if (socket.driverData && order.assignedDriver === socket.driverData.uid) {
-        isAuthorized = true;
-        cancelerType = 'driver';
-      } else if (socket.customerData && order.customer.id === socket.customerData.customerId) {
-        isAuthorized = true;
-        cancelerType = 'customer';
-      } else if (socket.adminData) {
-        isAuthorized = true;
-        cancelerType = 'admin';
-      }
-
-      if (!isAuthorized) {
-        throw new Error('Không có quyền hủy đơn hàng này');
-      }
-
+      orderService.callApiCancelOrder(orderId, reason || 'Không có lý do', socket.accessToken);
       // Hủy đơn hàng
-      const updatedOrder = orderService.updateOrderStatus(orderId, 'cancelled', {
-        cancelledBy: cancelerType,
+      const updatedOrder = orderService.updateOrderStatus(orderId, AppOrderProcessStatus.CANCELLED, {
         cancelReason: reason || 'Không có lý do'
       });
 
@@ -458,7 +461,6 @@ class OrderController {
       // 1. Thông báo cho khách hàng
       SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_cancelled', {
         orderId,
-        cancelledBy: cancelerType,
         reason: reason || 'Không có lý do',
         timestamp: new Date().toISOString()
       });
@@ -469,7 +471,6 @@ class OrderController {
         if (driver && driver.socketId) {
           SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_cancelled', {
             orderId,
-            cancelledBy: cancelerType,
             reason: reason || 'Không có lý do',
             timestamp: new Date().toISOString()
           });

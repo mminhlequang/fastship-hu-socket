@@ -1,4 +1,5 @@
 const Order = require('../models/Order');
+const { AppOrderProcessStatus } = require('../utils/MessageCodes');
 const driverService = require('./DriverService');
 const { v4: uuidv4 } = require('uuid');
 
@@ -52,7 +53,7 @@ class OrderService {
 
   // Tìm tài xế phù hợp cho đơn hàng
   findDriverForOrder (order) {
-    const orderId = order.id; 
+    const orderId = order.id;
 
     // Lấy danh sách tài xế đang hoạt động
     const availableDrivers = driverService.getOnlineDrivers(false);
@@ -216,7 +217,7 @@ class OrderService {
     }
 
     // Xử lý các trường hợp đặc biệt
-    if (newStatus === 'completed') {
+    if (newStatus === AppOrderProcessStatus.COMPLETED) {
       // Khi hoàn thành đơn, cập nhật trạng thái tài xế
       if (order.assignedDriver) {
         const driver = driverService.getDriverByUuid(order.assignedDriver);
@@ -224,7 +225,7 @@ class OrderService {
           driver.setBusyStatus(false);
         }
       }
-    } else if (newStatus === 'cancelled') {
+    } else if (newStatus === AppOrderProcessStatus.CANCELLED) {
       // Khi hủy đơn, cập nhật trạng thái tài xế
       if (order.assignedDriver) {
         const driver = driverService.getDriverByUuid(order.assignedDriver);
@@ -236,7 +237,45 @@ class OrderService {
 
     this.callApiUpdateOrder(orderId, newStatus, order.driver_id, order.token);
     return order.updateStatus(newStatus, data);
-  } 
+  }
+
+  /**
+   * Gọi API chung
+   * @param {string} endpoint - Đường dẫn API endpoint
+   * @param {Object} data - Dữ liệu gửi đi
+   * @param {string} token - Token xác thực
+   * @param {string} method - Phương thức HTTP (mặc định là POST)
+   * @returns {Promise<Object>} - Kết quả từ API
+   */
+  async callApi (endpoint, data, token, method = 'POST') {
+    try {
+      if (!token) {
+        throw new Error('Token xác thực là bắt buộc');
+      }
+
+      const response = await fetch(`https://zennail23.com/api/v1/${endpoint}`, {
+        method: method,
+        headers: {
+          'accept': '*/*',
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': ''
+        },
+        body: JSON.stringify(data)
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(`Lỗi API: ${responseData.message || 'Không xác định'}`);
+      }
+
+      return responseData;
+    } catch (error) {
+      console.error(`Lỗi khi gọi API ${endpoint}:`, error);
+      throw error;
+    }
+  }
 
   /**
    * Gọi API để gán tài xế hoặc cập nhật trạng thái đơn hàng
@@ -246,51 +285,29 @@ class OrderService {
    * @param {string} token - Token xác thực của khách hàng
    * @returns {Promise<Object>} - Kết quả từ API
    */
-  async callApiUpdateOrder(orderId, processStatus, driverId = null, token) {
+  async callApiUpdateOrder (orderId, processStatus, driverId = null, token) {
     try {
       // Kiểm tra tham số đầu vào
       if (!orderId) {
         throw new Error('ID đơn hàng là bắt buộc');
       }
-      
+
       if (!processStatus) {
         throw new Error('Trạng thái đơn hàng là bắt buộc');
       }
-      
-      if (!token) {
-        throw new Error('Token xác thực là bắt buộc');
-      }
-      
+
       // Chuẩn bị dữ liệu gửi đi
       const requestData = {
         id: orderId,
         process_status: processStatus
       };
-      
+
       // Thêm driver_id nếu có
       if (driverId) {
         requestData.driver_id = driverId;
       }
-      
-      // Gọi API sử dụng fetch
-      const response = await fetch('https://zennail23.com/api/v1/order/update', {
-        method: 'POST',
-        headers: {
-          'accept': '*/*',
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': ''
-        },
-        body: JSON.stringify(requestData)
-      });
-      
-      // Xử lý kết quả
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(`Lỗi API: ${responseData.message || 'Không xác định'}`);
-      }
-      
+
+      const responseData = await this.callApi('order/update', requestData, token);
       console.log(`Đã cập nhật đơn hàng ${orderId} thành công:`, responseData);
       return responseData;
     } catch (error) {
@@ -298,33 +315,65 @@ class OrderService {
       throw error;
     }
   }
-  
+
+
   /**
-   * Cập nhật trạng thái đơn hàng và đồng bộ với API
+   * Gọi API để hoàn thành đơn hàng
    * @param {number} orderId - ID của đơn hàng
-   * @param {string} newStatus - Trạng thái mới
-   * @param {Object} data - Dữ liệu bổ sung
    * @param {string} token - Token xác thực của khách hàng
-   * @returns {Object} - Kết quả cập nhật
+   * @returns {Promise<Object>} - Kết quả từ API
    */
-  async updateOrderStatusWithApi(orderId, newStatus, data = {}, token) {
+  async callApiCompleteOrder (orderId, token) {
     try {
-      // Cập nhật trạng thái cục bộ trước
-      const localUpdateResult = this.updateOrderStatus(orderId, newStatus, data);
-      
-      // Lấy ID tài xế nếu có
-      const order = this.getOrderById(orderId);
-      const driverId = order.driver ? order.driver.id : null;
-      
-      // Gọi API để đồng bộ
-      await this.callApiUpdateOrder(orderId, newStatus, driverId, token);
-      
-      return localUpdateResult;
+      // Kiểm tra tham số đầu vào
+      if (!orderId) {
+        throw new Error('ID đơn hàng là bắt buộc');
+      }
+
+      // Chuẩn bị dữ liệu gửi đi
+      const requestData = {
+        id: orderId,
+      };
+
+      const responseData = await this.callApi('order/complete', requestData, token);
+      console.log(`Đã hoàn thành đơn hàng ${orderId} thành công:`, responseData);
+      return responseData;
     } catch (error) {
-      console.error(`Lỗi khi cập nhật đơn hàng ${orderId} với API:`, error);
+      console.error('Lỗi khi gọi API hoàn thành đơn hàng:', error);
       throw error;
     }
   }
+
+
+  /**
+   * Gọi API để hủy đơn hàng
+   * @param {number} orderId - ID của đơn hàng
+   * @param {string} cancel_note - Lý do hủy đơn hàng
+   * @param {string} token - Token xác thực của khách hàng
+   * @returns {Promise<Object>} - Kết quả từ API
+   */
+  async callApiCancelOrder (orderId, cancel_note, token) {
+    try {
+      // Kiểm tra tham số đầu vào
+      if (!orderId) {
+        throw new Error('ID đơn hàng là bắt buộc');
+      }
+
+      // Chuẩn bị dữ liệu gửi đi
+      const requestData = {
+        id: orderId,
+        cancel_note: cancel_note
+      };
+
+      const responseData = await this.callApi('order/cancel', requestData, token);
+      console.log(`Đã hủy đơn hàng ${orderId} thành công:`, responseData);
+      return responseData;
+    } catch (error) {
+      console.error('Lỗi khi gọi API hủy đơn hàng:', error);
+      throw error;
+    }
+  }
+
 }
 
 module.exports = new OrderService(); 

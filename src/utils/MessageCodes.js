@@ -8,7 +8,6 @@ const AppOrderProcessStatus = {
   STORE_ACCEPTED: 'storeAccepted', // Cửa hàng đã chấp nhận đơn
   DRIVER_ARRIVED_STORE: 'driverArrivedStore', // Tài xế đã đến địa điểm giao hàng
   DRIVER_PICKED: 'driverPicked', // Tài xế đã lấy hàng
-  DRIVER_DELIVERING: 'driverDelivering', // Tài xế đang giao hàng
   DRIVER_ARRIVED_DESTINATION: 'driverArrivedDestination', // Tài xế đã đến địa điểm giao hàng
   COMPLETED: 'completed', // Đơn hàng hoàn thành
   CANCELLED: 'cancelled' // Đơn hàng đã hủy
@@ -45,8 +44,10 @@ const MessageCodes = {
   ORDER_INVALID_TRANSITION: 'ORDER_INVALID_TRANSITION',
   ORDER_DRIVER_ASSIGNMENT_FAILED: 'ORDER_DRIVER_ASSIGNMENT_FAILED',
   ORDER_CANCEL_FAILED: 'ORDER_CANCEL_FAILED',
+  ORDER_COMPLETE_FAILED: 'ORDER_COMPLETE_FAILED',
   ORDER_UPDATE_FAILED: 'ORDER_UPDATE_FAILED',
   NO_AVAILABLE_DRIVER: 'NO_AVAILABLE_DRIVER',
+  ORDER_CANCELLATION_FAILED: 'ORDER_CANCELLATION_FAILED',
 
   // Mã lỗi tài xế
   DRIVER_NOT_FOUND: 'DRIVER_NOT_FOUND',

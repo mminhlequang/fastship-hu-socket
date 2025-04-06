@@ -70,7 +70,7 @@ class Order {
   // Cập nhật trạng thái đơn hàng
   updateStatus (newStatus, data = {}) {
     // Kiểm tra trạng thái hợp lệ
-    const validStatuses = [AppOrderProcessStatus.PENDING, AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.DRIVER_DELIVERING, AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED];
+    const validStatuses = [AppOrderProcessStatus.PENDING, AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED];
 
     if (!validStatuses.includes(newStatus)) {
       throw new Error(`Trạng thái không hợp lệ: ${newStatus}`);
@@ -80,9 +80,9 @@ class Order {
     const oldStatus = this.process_status ?? AppOrderProcessStatus.PENDING;
 
     // Kiểm tra logic chuyển đổi trạng thái
-    if (!this.isValidStatusTransition(oldStatus, newStatus) && oldStatus != newStatus) {
-      throw new Error(`Không thể chuyển từ trạng thái ${oldStatus} sang ${newStatus}`);
-    }
+    // if (!this.isValidStatusTransition(oldStatus, newStatus) && oldStatus != newStatus) {
+    //   throw new Error(`Không thể chuyển từ trạng thái ${oldStatus} sang ${newStatus}`);
+    // }
 
     // Cập nhật trạng thái
     this.process_status = newStatus;
@@ -101,24 +101,23 @@ class Order {
     };
   }
 
-  // Kiểm tra tính hợp lệ của việc chuyển đổi trạng thái
-  isValidStatusTransition (fromStatus, toStatus) {
-    // Định nghĩa các chuyển đổi trạng thái hợp lệ
-    const validTransitions = {
-      [AppOrderProcessStatus.PENDING]: [AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.FIND_DRIVER]: [AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.DRIVER_ACCEPTED]: [AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.STORE_ACCEPTED]: [AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.DRIVER_ARRIVED_STORE]: [AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.DRIVER_PICKED]: [AppOrderProcessStatus.DRIVER_DELIVERING, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.DRIVER_DELIVERING]: [AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION]: [AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED],
-      [AppOrderProcessStatus.COMPLETED]: [], // Không thể chuyển từ trạng thái completed sang trạng thái khác
-      [AppOrderProcessStatus.CANCELLED]: [] // Không thể chuyển từ trạng thái cancelled sang trạng thái khác
-    };
+  // // Kiểm tra tính hợp lệ của việc chuyển đổi trạng thái
+  // isValidStatusTransition (fromStatus, toStatus) {
+  //   // Định nghĩa các chuyển đổi trạng thái hợp lệ
+  //   const validTransitions = {
+  //     [AppOrderProcessStatus.PENDING]: [AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.FIND_DRIVER]: [AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.DRIVER_ACCEPTED]: [AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.STORE_ACCEPTED]: [AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.DRIVER_ARRIVED_STORE]: [AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.DRIVER_PICKED]: [AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION]: [AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED],
+  //     [AppOrderProcessStatus.COMPLETED]: [], // Không thể chuyển từ trạng thái completed sang trạng thái khác
+  //     [AppOrderProcessStatus.CANCELLED]: [] // Không thể chuyển từ trạng thái cancelled sang trạng thái khác
+  //   };
 
-    return validTransitions[fromStatus]?.includes(toStatus) || false;
-  }
+  //   return validTransitions[fromStatus]?.includes(toStatus) || false;
+  // }
 
   // Gán tài xế cho đơn hàng
   assignDriver (driverId) {

@@ -198,7 +198,7 @@ const setupSocketEvents = (io) => {
           });
 
           // Cập nhật thời gian hoạt động cuối cùng
-          socket.lastActive = new Date(); 
+          socket.lastActive = new Date();
         } else {
           throw new Error('Tài xế chưa đăng ký');
         }
@@ -235,12 +235,25 @@ const setupSocketEvents = (io) => {
     // Cập nhật trạng thái đơn hàng
     socket.on('update_order_status', async (data) => {
       try {
-        logEvent(`Cập nhật trạng thái đơn hàng ${data.orderId} thành ${data.status} từ ${socket.id}`);
+        logEvent(`Cập nhật trạng thái đơn hàng ${data.orderId} thành ${data.processStatus} từ ${socket.id}`);
         await orderController.updateOrderStatus(socket, data, io);
       } catch (error) {
         logEvent(`Lỗi khi cập nhật trạng thái đơn hàng: ${error.message}`);
         SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_UPDATE_FAILED, {
           message: 'Lỗi khi cập nhật trạng thái đơn hàng: ' + error.message
+        });
+      }
+    });
+
+    // Hoàn thành đơn hàng
+    socket.on('complete_order', async (data) => {
+      try {
+        logEvent(`Yêu cầu hoàn thành đơn hàng ${data.orderId} từ ${socket.id}`);
+        await orderController.completeOrder(socket, data, io);
+      } catch (error) {
+        logEvent(`Lỗi khi hoàn thành đơn hàng: ${error.message}`);
+        SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_COMPLETE_FAILED, {
+          message: 'Lỗi khi hoàn thành đơn hàng: ' + error.message
         });
       }
     });
