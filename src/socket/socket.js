@@ -1,5 +1,6 @@
 const driverController = require('../controllers/DriverController');
 const orderController = require('../controllers/OrderController');
+const orderService = require('../services/OrderService');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -93,6 +94,20 @@ const setupSocketEvents = (io) => {
           });
 
           logEvent(`Xác thực thành công cho tài xế: ${JSON.stringify(socket.driverData)}`);
+
+          // Kiểm tra và gửi thông tin đơn hàng hiện tại nếu có
+          if (socket.driverData && socket.driverData.uid) {
+            const activeOrder = orderService.getActiveOrderByDriverId(socket.driverData.uid);
+            if (activeOrder) {
+              logEvent(`Tài xế ${socket.driverData.uid} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
+              SocketResponse.emitSuccess(socket, 'current_order_info', {
+                order: activeOrder.getOrderData(),
+                process_status: activeOrder.process_status,
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+
         } catch (apiError) {
           logEvent(`Lỗi khi gọi API: ${apiError.message}`);
           SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {

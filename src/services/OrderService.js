@@ -51,6 +51,27 @@ class OrderService {
     return orderIds.map(id => this.orders[id]).filter(Boolean);
   }
 
+  /**
+   * Lấy đơn hàng đang hoạt động (chưa hoàn thành/hủy) của tài xế
+   * @param {string} driverId - ID của tài xế
+   * @returns {Order|null} - Đơn hàng đang hoạt động hoặc null nếu không có
+   */
+  getActiveOrderByDriverId (driverId) {
+    const orderIds = this.driverOrders[driverId] || [];
+    for (const orderId of orderIds) {
+      const order = this.getOrderById(orderId);
+      if (
+        order &&
+        order.assignedDriver === driverId && // Ensure it's still assigned to this driver
+        order.process_status !== AppOrderProcessStatus.COMPLETED &&
+        order.process_status !== AppOrderProcessStatus.CANCELLED
+      ) {
+        return order; // Return the first active order found
+      }
+    }
+    return null; // No active order found
+  }
+
   // Tìm tài xế phù hợp cho đơn hàng
   findDriverForOrder (order) {
     const orderId = order.id;
