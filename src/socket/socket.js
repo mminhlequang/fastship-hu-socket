@@ -80,7 +80,7 @@ const setupSocketEvents = (io) => {
           socket.driverData = {
             profile: profileResponse.data.data,
             wallet: walletResponse.data.data,
-            uid: profileResponse.data.data.uid
+            id: profileResponse.data.data.id
           };
 
           // Đăng ký tài xế với hệ thống
@@ -88,7 +88,7 @@ const setupSocketEvents = (io) => {
 
           // Thông báo kết nối thành công cho client
           SocketResponse.emitSuccess(socket, 'authentication_success', {
-            driverId: socket.driverData.uid,
+            driverId: socket.driverData.id,
             profile: profileResponse.data,
             wallet: walletResponse.data
           });
@@ -96,10 +96,10 @@ const setupSocketEvents = (io) => {
           logEvent(`Xác thực thành công cho tài xế: ${JSON.stringify(socket.driverData)}`);
 
           // Kiểm tra và gửi thông tin đơn hàng hiện tại nếu có
-          if (socket.driverData && socket.driverData.uid) {
-            const activeOrder = orderService.getActiveOrderByDriverId(socket.driverData.uid);
+          if (socket.driverData && socket.driverData.id) {
+            const activeOrder = orderService.getActiveOrderByDriverUid(socket.driverData.id);
             if (activeOrder) {
-              logEvent(`Tài xế ${socket.driverData.uid} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
+              logEvent(`Tài xế ${socket.driverData.id} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
               SocketResponse.emitSuccess(socket, 'current_order_info', {
                 order: activeOrder.getOrderData(),
                 process_status: activeOrder.process_status,
@@ -183,6 +183,7 @@ const setupSocketEvents = (io) => {
     // Cập nhật vị trí tài xế
     socket.on('driver_update_location', async (data) => {
       try {
+        logEvent(`Cập nhật vị trí tài xế ${socket.id}: ${data}`);
         const location = await driverController.handleUpdateLocation(socket, data);
         // Cập nhật thời gian hoạt động cuối cùng
         socket.lastActive = new Date();
@@ -208,7 +209,7 @@ const setupSocketEvents = (io) => {
         if (socket.driverData) {
           // Cập nhật trạng thái trong driverController
           await driverController.handleDriverStatusUpdate(socket, {
-            uid: socket.driverData.uid,
+            id: socket.driverData.id,
             status: status
           });
 
@@ -323,14 +324,14 @@ const setupSocketEvents = (io) => {
         const driver = await driverController.handleDriverDisconnect(socket.id);
 
         if (driver) {
-          logEvent(`Tài xế ${driver.uid} đã ngắt kết nối (${socket.id}). Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);
+          logEvent(`Tài xế ${driver.id} đã ngắt kết nối (${socket.id}). Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);
 
           // Lưu trạng thái tài xế vào cơ sở dữ liệu (nếu có)
           try {
             // Giả sử có driverService
-            // await driverService.updateDriverStatus(driver.uid, 'offline');
+            // await driverService.updateDriverStatus(driver.id, 'offline');
           } catch (dbError) {
-            logEvent(`Lỗi khi cập nhật trạng thái tài xế ${driver.uid}: ${dbError.message}`);
+            logEvent(`Lỗi khi cập nhật trạng thái tài xế ${driver.id}: ${dbError.message}`);
           }
         } else {
           logEvent(`Socket ${socket.id} đã ngắt kết nối. Lý do: ${reason}. Thời gian kết nối: ${connectionDuration}s`);

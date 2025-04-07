@@ -38,37 +38,38 @@ class OrderService {
   getOrderById (id) {
     return this.orders[id] || null;
   }
-
-  // Lấy danh sách đơn hàng của khách hàng
-  getOrdersByCustomerId (customerId) {
-    const orderIds = this.customerOrders[customerId] || [];
-    return orderIds.map(id => this.orders[id]).filter(Boolean);
-  }
-
-  // Lấy danh sách đơn hàng của tài xế
-  getOrdersByDriverId (driverId) {
-    const orderIds = this.driverOrders[driverId] || [];
-    return orderIds.map(id => this.orders[id]).filter(Boolean);
-  }
-
   /**
    * Lấy đơn hàng đang hoạt động (chưa hoàn thành/hủy) của tài xế
    * @param {string} driverId - ID của tài xế
    * @returns {Order|null} - Đơn hàng đang hoạt động hoặc null nếu không có
    */
-  getActiveOrderByDriverId (driverId) {
+  getActiveOrderByDriverUid (driverId) {
+    console.log(`Tìm đơn hàng đang hoạt động cho tài xế: ${driverId}`);
     const orderIds = this.driverOrders[driverId] || [];
+    console.log(`Số lượng đơn hàng của tài xế ${driverId}: ${orderIds.length}`);
+
     for (const orderId of orderIds) {
+      console.log(`Kiểm tra đơn hàng: ${orderId}`);
       const order = this.getOrderById(orderId);
+
+      if (!order) {
+        console.log(`Không tìm thấy đơn hàng: ${orderId}`);
+        continue;
+      }
+
+      console.log(`Trạng thái đơn hàng ${orderId}: ${order.process_status}`);
+
       if (
         order &&
-        order.assignedDriver === driverId && // Ensure it's still assigned to this driver
         order.process_status !== AppOrderProcessStatus.COMPLETED &&
         order.process_status !== AppOrderProcessStatus.CANCELLED
       ) {
+        console.log(`Tìm thấy đơn hàng đang hoạt động: ${orderId}`);
         return order; // Return the first active order found
       }
     }
+
+    console.log(`Không tìm thấy đơn hàng đang hoạt động cho tài xế: ${driverId}`);
     return null; // No active order found
   }
 
@@ -197,7 +198,7 @@ class OrderService {
     }
 
     // Kiểm tra tài xế
-    const driver = driverService.getDriverByUuid(driverId);
+    const driver = driverService.getDriverById(driverId);
     if (!driver) {
       throw new Error(`Tài xế không tồn tại: ${driverId}`);
     }
@@ -230,7 +231,7 @@ class OrderService {
   }
 
   // Cập nhật trạng thái đơn hàng
-  updateOrderStatus (orderId, newStatus, data = {}) {
+  updateOrderStatus (orderId, newStatus, driverId = null) {
     const order = this.getOrderById(orderId);
 
     if (!order) {
@@ -240,24 +241,24 @@ class OrderService {
     // Xử lý các trường hợp đặc biệt
     if (newStatus === AppOrderProcessStatus.COMPLETED) {
       // Khi hoàn thành đơn, cập nhật trạng thái tài xế
-      if (order.assignedDriver) {
-        const driver = driverService.getDriverByUuid(order.assignedDriver);
+      if (order.assignedDriverId) {
+        const driver = driverService.getDriverById(order.assignedDriverId);
         if (driver) {
           driver.setBusyStatus(false);
         }
       }
     } else if (newStatus === AppOrderProcessStatus.CANCELLED) {
       // Khi hủy đơn, cập nhật trạng thái tài xế
-      if (order.assignedDriver) {
-        const driver = driverService.getDriverByUuid(order.assignedDriver);
+      if (order.assignedDriverId) {
+        const driver = driverService.getDriverById(order.assignedDriverId);
         if (driver) {
           driver.setBusyStatus(false);
         }
       }
     }
 
-    this.callApiUpdateOrder(orderId, newStatus, order.driver_id, order.token);
-    return order.updateStatus(newStatus, data);
+    this.callApiUpdateOrder(orderId, newStatus, driverId, order.token);
+    return order.updateStatus(newStatus, driverId);
   }
 
   /**
@@ -328,6 +329,7 @@ class OrderService {
         requestData.driver_id = driverId;
       }
 
+      console.log(`Cập nhật đơn hàng ${orderId}:`, requestData);
       const responseData = await this.callApi('order/update', requestData, token);
       console.log(`Đã cập nhật đơn hàng ${orderId} thành công:`, responseData);
       return responseData;

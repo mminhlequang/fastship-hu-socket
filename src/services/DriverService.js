@@ -10,8 +10,8 @@ class DriverService {
   registerDriver (socket) {
     const driverData = socket.driverData;
     // Nếu tài xế đã tồn tại, cập nhật thông tin
-    if (this.drivers[driverData.uid]) {
-      const driver = this.drivers[driverData.uid];
+    if (this.drivers[driverData.id]) {
+      const driver = this.drivers[driverData.id];
 
       driver.driverData = driverData;
 
@@ -25,7 +25,7 @@ class DriverService {
 
         // Cập nhật socketId mới
         driver.setSocketId(socket.id);
-        this.socketToDriverMap[socket.id] = driverData.uid;
+        this.socketToDriverMap[socket.id] = driverData.id;
       }
 
       return driver;
@@ -35,40 +35,40 @@ class DriverService {
     const driver = new Driver(driverData);
     if (socket.id) {
       driver.setSocketId(socket.id);
-      this.socketToDriverMap[socket.id] = driverData.uid;
+      this.socketToDriverMap[socket.id] = driverData.id;
     }
 
-    this.drivers[driverData.uid] = driver;
+    this.drivers[driverData.id] = driver;
     return driver;
   }
 
   // Cập nhật vị trí tài xế
-  updateDriverLocation (uid, lat, lng) {
-    const driver = this.drivers[uid];
+  updateDriverLocation (id, lat, lng) {
+    const driver = this.drivers[id];
     if (!driver) return null;
 
     return driver.updateLocation(lat, lng);
   }
 
   // Lấy tài xế theo UUID
-  getDriverByUuid (uid) {
-    return this.drivers[uid] || null;
+  getDriverById (driverId) {
+    return this.drivers[driverId] || null;
   }
 
   // Lấy tài xế theo socket ID
   getDriverBySocketId (socketId) {
-    const uid = this.socketToDriverMap[socketId];
-    if (!uid) return null;
+    const driverId = this.socketToDriverMap[socketId];
+    if (!driverId) return null;
 
-    return this.drivers[uid];
+    return this.drivers[driverId];
   }
 
   // Đặt trạng thái offline cho tài xế
   setDriverOffline (socketId) {
-    const uid = this.socketToDriverMap[socketId];
-    if (!uid || !this.drivers[uid]) return false;
+    const driverId = this.socketToDriverMap[socketId];
+    if (!driverId || !this.drivers[driverId]) return false;
 
-    this.drivers[uid].setOnlineStatus(false);
+    this.drivers[driverId].setOnlineStatus(false);
 
     // Xóa mapping socket
     delete this.socketToDriverMap[socketId];
@@ -77,10 +77,10 @@ class DriverService {
   }
 
   // Đặt trạng thái online cho tài xế theo UUID
-  setDriverOnline (uid) {
-    if (!uid || !this.drivers[uid]) return false;
+  setDriverOnline (id) {
+    if (!id || !this.drivers[id]) return false;
 
-    this.drivers[uid].setOnlineStatus(true);
+    this.drivers[id].setOnlineStatus(true);
     return true;
   }
 

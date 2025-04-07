@@ -31,12 +31,12 @@ router.get('/drivers/online', (req, res) => {
 
 /**
  * API lấy thông tin tài xế theo UUID
- * GET /api/drivers/:uid
+ * GET /api/drivers/:id
  */
-router.get('/drivers/:uid', (req, res) => {
+router.get('/drivers/:id', (req, res) => {
   try {
-    const { uid } = req.params;
-    const driver = driverController.getDriverByUuid(uid);
+    const { id } = req.params;
+    const driver = driverController.getDriverById(id);
 
     if (!driver) {
       return res.status(404).json({
@@ -56,7 +56,7 @@ router.get('/drivers/:uid', (req, res) => {
       }
     });
   } catch (error) {
-    console.error(`Lỗi khi lấy thông tin tài xế ${req.params.uid}:`, error);
+    console.error(`Lỗi khi lấy thông tin tài xế ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server'

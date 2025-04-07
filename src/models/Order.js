@@ -5,18 +5,17 @@ const { AppOrderProcessStatus } = require('../utils/MessageCodes');
  */
 class Order {
   constructor (orderData) {
-
     this.token = orderData.accessToken;
-    
+
     // Thông tin cơ bản
     this.id = orderData.id;
     this.code = orderData.code;
-    this.total_price = orderData.total_price;
     this.currency = orderData.currency;
     this.payment_type = orderData.payment_type;
     this.payment_status = orderData.payment_status;
     this.process_status = orderData.process_status;
     this.note = orderData.note;
+    this.cancel_note = orderData.cancel_note;
 
     // Thông tin thanh toán
     this.payment = orderData.payment || null;
@@ -34,9 +33,16 @@ class Order {
     this.items = orderData.items || [];
 
     // Thông tin phí và khoảng cách
-    this.fee = orderData.fee || 0;
-    this.price_tip = orderData.price_tip || 0;
-    this.distance = orderData.distance || 0;
+    this.ship_fee = orderData.ship_fee || 0;
+    this.tip = orderData.tip || 0;
+    this.discount = orderData.discount || 0;
+    this.application_fee = orderData.application_fee || 0;
+    this.subtotal = orderData.subtotal || 0;
+    this.total = orderData.total || 0;
+    this.ship_distance = orderData.ship_distance || 0;
+    this.ship_estimate_time = orderData.ship_estimate_time;
+    this.ship_polyline = orderData.ship_polyline;
+    this.ship_here_raw = orderData.ship_here_raw;
 
     // Thông tin địa chỉ
     this.phone = orderData.phone;
@@ -52,7 +58,6 @@ class Order {
 
     // Thông tin voucher
     this.voucher = orderData.voucher;
-    this.voucher_value = orderData.voucher_value || 0;
 
     // Thông tin thời gian
     this.time_order = orderData.time_order;
@@ -68,7 +73,7 @@ class Order {
   }
 
   // Cập nhật trạng thái đơn hàng
-  updateStatus (newStatus, data = {}) {
+  updateStatus (newStatus, driverId = null) {
     // Kiểm tra trạng thái hợp lệ
     const validStatuses = [AppOrderProcessStatus.PENDING, AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED];
 
@@ -88,11 +93,8 @@ class Order {
     this.process_status = newStatus;
     this.timestamps.updatedAt = new Date();
 
-    
-
-    // Cập nhật custom data nếu có
-    if (data && Object.keys(data).length > 0) {
-      Object.assign(this, data);
+    if (driverId) {
+      this.assignedDriverId = driverId;
     }
 
     return {
@@ -125,8 +127,7 @@ class Order {
       throw new Error(`Không thể gán tài xế cho đơn hàng có trạng thái ${this.process_status}`);
     }
 
-    this.driver = driverId;
-    this.driver_id = driverId;
+    this.assignedDriverId = driverId;
     return this.updateStatus(AppOrderProcessStatus.DRIVER_ACCEPTED, { driver: driverId });
   }
 
@@ -141,41 +142,7 @@ class Order {
 
   // Lấy toàn bộ thông tin đơn hàng
   getOrderData () {
-    return {
-      id: this.id,
-      code: this.code,
-      total_price: this.total_price,
-      currency: this.currency,
-      payment_type: this.payment_type,
-      payment_status: this.payment_status,
-      process_status: this.process_status,
-      note: this.note,
-      payment: this.payment,
-      store: this.store,
-      customer: this.customer,
-      driver: this.driver,
-      items: this.items,
-      fee: this.fee,
-      price_tip: this.price_tip,
-      distance: this.distance,
-      phone: this.phone,
-      street: this.street,
-      zip: this.zip,
-      city: this.city,
-      state: this.state,
-      country: this.country,
-      country_code: this.country_code,
-      lat: this.lat,
-      lng: this.lng,
-      address: this.address,
-      voucher: this.voucher,
-      voucher_value: this.voucher_value,
-      time_order: this.time_order,
-      time_pickup_estimate: this.time_pickup_estimate,
-      time_pickup: this.time_pickup,
-      time_delivery: this.time_delivery,
-      timestamps: this.timestamps
-    };
+    return this;
   }
 }
 

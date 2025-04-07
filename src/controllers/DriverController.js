@@ -13,15 +13,15 @@ class DriverController {
 
       // Đăng ký hoặc cập nhật thông tin tài xế
       const driver = driverService.registerDriver(socket);
-      const uid = driver.driverData.uid;
+      const driverId = driver.driverData.id;
 
       // Thông báo kết nối thành công
       SocketResponse.emitSuccess(socket, 'connection_success', {
         message: 'Kết nối thành công',
-        driverId: uid
+        driverId: driverId
       });
 
-      console.log(`Tài xế đã kết nối: ${uid} (${socket.id})`);
+      console.log(`Tài xế đã kết nối: ${driverId} (${socket.id})`);
 
       return driver;
     } catch (error) {
@@ -39,17 +39,17 @@ class DriverController {
    */
   handleDriverStatusUpdate (socket, data) {
     try {
-      const { uid, status } = data;
+      const { id, status } = data;
 
-      if (!uid) {
+      if (!id) {
         SocketResponse.emitError(socket, 'error', MessageCodes.INVALID_PARAMS, {
-          message: 'UUID là bắt buộc'
+          message: 'ID là bắt buộc'
         });
         return null;
       }
 
       // Kiểm tra tài xế có tồn tại không
-      const driver = driverService.getDriverByUuid(uid);
+      const driver = driverService.getDriverById(id);
       if (!driver) {
         SocketResponse.emitError(socket, 'error', MessageCodes.DRIVER_NOT_FOUND, {
           message: 'Tài xế không tồn tại'
@@ -59,11 +59,11 @@ class DriverController {
 
       // Cập nhật trạng thái online/offline
       if (status === 'online') {
-        driverService.setDriverOnline(uid);
-        console.log(`Tài xế đã online: ${uid} (${socket.id})`);
+        driverService.setDriverOnline(id);
+        console.log(`Tài xế đã online: ${id} (${socket.id})`);
       } else {
-        driverService.setDriverOffline(uid);
-        console.log(`Tài xế đã offline: ${uid} (${socket.id})`);
+        driverService.setDriverOffline(id);
+        console.log(`Tài xế đã offline: ${id} (${socket.id})`);
       }
 
       return driver;
@@ -87,7 +87,7 @@ class DriverController {
 
       if (driver) {
         driverService.setDriverOffline(socketId);
-        console.log(`Tài xế đã ngắt kết nối: ${driver.uid} (${socketId})`);
+        console.log(`Tài xế đã ngắt kết nối: ${driver.id} (${socketId})`);
         return driver;
       }
     } catch (error) {
@@ -123,14 +123,15 @@ class DriverController {
       }
 
       // Cập nhật vị trí
-      const location = driverService.updateDriverLocation(driver.driverData.uid, latitude, longitude);
+      const location = driverService.updateDriverLocation(driver.driverData.id, latitude, longitude);
 
+      logEvent(`driver_${driver.driverData.id}`);
       // Phát sóng vị trí mới đến kênh cụ thể của tài xế
       // Những client đang nghe kênh này sẽ nhận được cập nhật vị trí mới
-      SocketResponse.emitToRoom(socket.server, `driver_${driver.driverData.uid}`, `driver_${driver.driverData.uid}`, true, MessageCodes.SUCCESS, {
+      SocketResponse.emitToRoom(socket.server, `driver_${driver.driverData.id}`, `driver_${driver.driverData.id}`, true, MessageCodes.SUCCESS, {
         type: 'location_update',
         driver: {
-          uid: driver.driverData.uid,
+          id: driver.driverData.id,
           location,
           lastActive: driver.lastActive
         }
@@ -160,14 +161,14 @@ class DriverController {
   }
 
   /**
-   * Lấy thông tin tài xế theo UUID
-   * @param {string} uid - UUID của tài xế
+   * Lấy thông tin tài xế theo ID
+   * @param {string} id - ID của tài xế
    */
-  getDriverByUuid (uid) {
+  getDriverById (id) {
     try {
-      return driverService.getDriverByUuid(uid);
+      return driverService.getDriverById(id);
     } catch (error) {
-      console.error(`Lỗi khi lấy thông tin tài xế ${uid}:`, error);
+      console.error(`Lỗi khi lấy thông tin tài xế ${id}:`, error);
       return null;
     }
   }
