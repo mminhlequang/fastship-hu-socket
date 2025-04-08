@@ -8,7 +8,7 @@ const driverController = require('../controllers/DriverController');
  */
 router.get('/drivers/online', (req, res) => {
   try {
-    const drivers = driverController.getOnlineDrivers().map(driver => ({
+    const drivers = driverController.getOnlineDrivers(req.query.isBusy, req.query.lat, req.query.lng).map(driver => ({
       info: driver.driverData,
       location: driver.location,
       lastActive: driver.lastActive,

@@ -1,3 +1,7 @@
+const AppConfig = {
+  HOST_API: 'https://zennail23.com/api/v1'
+}
+
 /**
  * Enum cho trạng thái xử lý đơn hàng
  */
@@ -64,4 +68,4 @@ const MessageCodes = {
   CUSTOMER_NOT_AUTHORIZED: 'CUSTOMER_NOT_AUTHORIZED'
 };
 
-module.exports = { MessageCodes, AppOrderProcessStatus, FindDriverStatus }; 
+module.exports = { MessageCodes, AppOrderProcessStatus, FindDriverStatus, AppConfig }; 

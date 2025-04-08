@@ -1,6 +1,6 @@
 const driverService = require('../services/DriverService');
 const SocketResponse = require('../utils/SocketResponse');
-const { MessageCodes, AppOrderProcessStatus } = require('../utils/MessageCodes');
+const { MessageCodes, AppOrderProcessStatus } = require('../utils/Enums');
 
 class DriverController {
   /**
@@ -125,7 +125,7 @@ class DriverController {
       // Cập nhật vị trí
       const location = driverService.updateDriverLocation(driver.driverData.id, latitude, longitude);
 
-      logEvent(`driver_${driver.driverData.id}`);
+      console.log(`driver_${driver.driverData.id}`);
       // Phát sóng vị trí mới đến kênh cụ thể của tài xế
       // Những client đang nghe kênh này sẽ nhận được cập nhật vị trí mới
       SocketResponse.emitToRoom(socket.server, `driver_${driver.driverData.id}`, `driver_${driver.driverData.id}`, true, MessageCodes.SUCCESS, {
@@ -151,9 +151,9 @@ class DriverController {
   /**
    * Lấy danh sách tài xế đang online
    */
-  getOnlineDrivers () {
+  getOnlineDrivers (isBusy = null, lat = null, lng = null) {
     try {
-      return driverService.getOnlineDrivers();
+      return driverService.getOnlineDrivers(isBusy, lat, lng);
     } catch (error) {
       console.error('Lỗi khi lấy danh sách tài xế online:', error);
       return [];

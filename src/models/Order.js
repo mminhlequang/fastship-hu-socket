@@ -1,4 +1,4 @@
-const { AppOrderProcessStatus } = require('../utils/MessageCodes');
+const { AppOrderProcessStatus } = require('../utils/Enums');
 
 /**
  * Model lưu trữ thông tin đơn hàng

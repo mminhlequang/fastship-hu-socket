@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const SocketResponse = require('../utils/SocketResponse');
-const { MessageCodes, AppOrderProcessStatus } = require('../utils/MessageCodes');
+const { MessageCodes, AppConfig } = require('../utils/Enums');
 
 /**
  * Thiết lập các sự kiện Socket.IO
@@ -56,7 +56,7 @@ const setupSocketEvents = (io) => {
 
         // Lấy thông tin tài xế từ API
         try {
-          const profileResponse = await axios.get('https://zennail23.com/api/v1/profile', {
+          const profileResponse = await axios.get(`${AppConfig.HOST_API}/profile`, {
             headers: {
               'Authorization': `Bearer ${data.token}`,
               'X-CSRF-TOKEN': '',
@@ -64,7 +64,7 @@ const setupSocketEvents = (io) => {
             }
           });
 
-          const walletResponse = await axios.get('https://zennail23.com/api/v1/transaction/get_my_wallet?currency=eur', {
+          const walletResponse = await axios.get(`${AppConfig.HOST_API}/transaction/get_my_wallet?currency=eur`, {
             headers: {
               'Authorization': `Bearer ${data.token}`,
               'X-CSRF-TOKEN': '',
@@ -97,7 +97,8 @@ const setupSocketEvents = (io) => {
 
           // Kiểm tra và gửi thông tin đơn hàng hiện tại nếu có
           if (socket.driverData && socket.driverData.id) {
-            const activeOrder = orderService.getActiveOrderByDriverUid(socket.driverData.id);
+            const activeOrder = await orderService.getActiveOrderByDriverUid(socket.driverData.id);
+            console.log('activeOrder', activeOrder);
             if (activeOrder) {
               logEvent(`Tài xế ${socket.driverData.id} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
               SocketResponse.emitSuccess(socket, 'current_order_info', {
@@ -137,7 +138,7 @@ const setupSocketEvents = (io) => {
 
         // Lấy thông tin tài xế từ API
         try {
-          const profileResponse = await axios.get('https://zennail23.com/api/v1/profile', {
+          const profileResponse = await axios.get(`${AppConfig.HOST_API}/profile`, {
             headers: {
               'Authorization': `Bearer ${data.token}`,
               'X-CSRF-TOKEN': '',
@@ -265,7 +266,7 @@ const setupSocketEvents = (io) => {
     socket.on('complete_order', async (data) => {
       try {
         logEvent(`Yêu cầu hoàn thành đơn hàng ${data.orderId} từ ${socket.id}`);
-        await orderController.completeOrder(socket, data, io);
+        orderController.completeOrder(socket, data, io);
       } catch (error) {
         logEvent(`Lỗi khi hoàn thành đơn hàng: ${error.message}`);
         SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_COMPLETE_FAILED, {
