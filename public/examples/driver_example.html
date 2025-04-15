@@ -204,16 +204,14 @@
       </div>
 
       <div id="login-tab" class="tab-content active">
-        <h2>Login</h2>
+        <h2>Access Token</h2>
         <div class="form-group">
-          <label for="phone">Phone Number</label>
-          <input type="text" id="phone" value="+84979797979" placeholder="Enter phone number">
+          <label for="access-token">Nhập Access Token</label>
+          <input type="text" id="access-token"
+            value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Miwicm9sZSI6ImRyaXZlciIsInBob25lIjoiKzg0OTc5Nzk3OTc5IiwidHlwZSI6MywiaWF0IjoxNzE4NjE4MDc1LCJleHAiOjE3MjEyMTAwNzV9.r7ChS9vOGaKjmPsqnGkjcB-MzcSVU9yJd4WoBkbLnLg"
+            placeholder="Nhập access token của tài xế">
         </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" value="123456" placeholder="Enter password">
-        </div>
-        <button id="login-btn" onclick="login()">Login</button>
+        <button id="login-btn" onclick="login()">Set Token</button>
         <div id="login-status" class="status"></div>
       </div>
 
@@ -321,55 +319,37 @@
 
     // Login function to get access token
     async function login () {
-      const phone = document.getElementById('phone').value;
-      const password = document.getElementById('password').value;
+      const token = document.getElementById('access-token').value.trim();
       const loginStatus = document.getElementById('login-status');
 
-      if (!phone || !password) {
-        loginStatus.innerHTML = 'Please enter phone number and password';
+      if (!token) {
+        loginStatus.innerHTML = 'Vui lòng nhập access token';
         loginStatus.className = 'status error';
         return;
       }
 
-      loginStatus.innerHTML = 'Logging in...';
+      loginStatus.innerHTML = 'Đang thiết lập token...';
       loginStatus.className = 'status';
 
       try {
-        const response = await fetch('https://zennail23.com/api/v1/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '',
-            'accept': '*/*'
-          },
-          body: JSON.stringify({
-            phone: phone,
-            password: password,
-            type: 3 // Driver type
-          })
-        });
+        accessToken = token;
+        loginStatus.innerHTML = 'Token đã được thiết lập: ' + accessToken.substring(0, 10) + '...';
+        loginStatus.className = 'status success';
+        addLog('Token set successfully', 'success');
+        console.log('Token set successfully:', accessToken.substring(0, 15) + '...');
 
-        const data = await response.json();
+        // Đặt driverId (sẽ được cập nhật sau khi xác thực với socket)
+        driverId = 2;
 
-        if (data.status === true && data.data && data.data.access_token) {
-          accessToken = data.data.access_token;
-          loginStatus.innerHTML = 'Login successful! Token: ' + accessToken.substring(0, 10) + '...';
-          loginStatus.className = 'status success';
-          addLog('Login successful', 'success');
-
-          // Auto switch to socket tab
-          setTimeout(() => {
-            openTab('socket-tab');
-          }, 1000);
-        } else {
-          loginStatus.innerHTML = 'Login failed: ' + (data.message || 'Unknown error');
-          loginStatus.className = 'status error';
-          addLog('Login failed: ' + (data.message || 'Unknown error'), 'error');
-        }
+        // Auto switch to socket tab
+        setTimeout(() => {
+          openTab('socket-tab');
+        }, 1000);
       } catch (error) {
-        loginStatus.innerHTML = 'Error: ' + error.message;
+        loginStatus.innerHTML = 'Lỗi: ' + error.message;
         loginStatus.className = 'status error';
-        addLog('Login error: ' + error.message, 'error');
+        addLog('Token error: ' + error.message, 'error');
+        console.error('Token error:', error);
       }
     }
 
@@ -393,6 +373,13 @@
           reconnectionDelay: 1000
         });
 
+        // Log all emits
+        const originalEmit = socket.emit;
+        socket.emit = function (eventName, payload) {
+          console.log('EMIT:', eventName, payload);
+          return originalEmit.apply(this, arguments);
+        };
+
         // Connection events
         socket.on('connect', () => {
           document.getElementById('socket-status').innerHTML = 'Connected to server. Socket ID: ' + socket.id;
@@ -400,6 +387,7 @@
           document.getElementById('connect-btn').disabled = true;
           document.getElementById('disconnect-btn').disabled = false;
           addLog('Socket connected. Socket ID: ' + socket.id, 'success');
+          console.log('EVENT: connect', socket.id);
 
           // Authenticate driver
           socket.emit('authenticate_driver', { token: accessToken });
@@ -411,6 +399,7 @@
           document.getElementById('connect-btn').disabled = false;
           document.getElementById('disconnect-btn').disabled = true;
           addLog('Socket disconnected. Reason: ' + reason, 'error');
+          console.log('EVENT: disconnect', reason);
 
           // Clear intervals
           if (locationUpdateInterval) {
@@ -423,11 +412,13 @@
           document.getElementById('socket-status').innerHTML = 'Connection error: ' + error.message;
           document.getElementById('socket-status').className = 'status error';
           addLog('Socket connection error: ' + error.message, 'error');
+          console.log('EVENT: connect_error', error);
         });
 
         // Authentication events
         socket.on('authentication_success', (response) => {
           addLog('Authentication successful: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: authentication_success', response);
           driverId = response.data.driverId;
 
           // Enable driver status buttons
@@ -447,6 +438,7 @@
 
         socket.on('authentication_error', (response) => {
           addLog('Authentication error: ' + response.message, 'error');
+          console.log('EVENT: authentication_error', response);
           document.getElementById('socket-status').innerHTML = 'Authentication failed: ' + response.message;
           document.getElementById('socket-status').className = 'status error';
         });
@@ -454,21 +446,23 @@
         // Sự kiện xác nhận phản hồi đơn hàng
         socket.on('driver_new_order_response_confirmed', (response) => {
           addLog('Order response confirmed: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: driver_new_order_response_confirmed', response);
         });
 
         // Order-related events
         socket.on('new_order_request', (response) => {
           addLog('New order request received: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: new_order_request', response);
           newOrderRequest = response.data.order;
 
           // Show new order request
           document.getElementById('new-order').style.display = 'block';
           document.getElementById('new-order-details').innerHTML = `
             <div><strong class="order-id">Order ID: ${newOrderRequest.id}</strong></div>
-            <div>From: ${newOrderRequest.pickup_address}</div>
-            <div>To: ${newOrderRequest.delivery_address}</div>
-            <div>Distance: ${newOrderRequest.distance} km</div>
-            <div>Price: ${newOrderRequest.price} ${newOrderRequest.currency}</div>
+            <div>From: ${newOrderRequest.pickup_address || newOrderRequest.store?.address || 'Unknown'}</div>
+            <div>To: ${newOrderRequest.delivery_address || newOrderRequest.address || 'Unknown'}</div>
+            <div>Distance: ${newOrderRequest.distance || newOrderRequest.ship_distance / 1000 || 0} km</div>
+            <div>Price: ${newOrderRequest.price || newOrderRequest.total || 0} ${newOrderRequest.currency || 'EUR'}</div>
           `;
 
           // Auto switch to orders tab
@@ -478,11 +472,13 @@
         // Thông báo xác nhận cập nhật trạng thái đơn hàng
         socket.on('order_status_updated_confirmation', (response) => {
           addLog('Order status update confirmed: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: order_status_updated_confirmation', response);
         });
 
         // Thông báo cập nhật trạng thái đơn hàng
         socket.on('order_status_updated', (response) => {
           addLog('Order status updated: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: order_status_updated', response);
           if (currentOrder && currentOrder.id === response.data.orderId) {
             currentOrder.process_status = response.data.processStatus;
             updateActiveOrder();
@@ -491,6 +487,7 @@
 
         socket.on('order_cancelled', (response) => {
           addLog('Order cancelled: ' + JSON.stringify(response.data), 'warning');
+          console.log('EVENT: order_cancelled', response);
           if (currentOrder && currentOrder.id === response.data.orderId) {
             currentOrder = null;
             document.getElementById('active-order').style.display = 'none';
@@ -499,6 +496,7 @@
 
         socket.on('order_completed', (response) => {
           addLog('Order completed: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: order_completed', response);
           if (currentOrder && currentOrder.id === response.data.orderId) {
             currentOrder = null;
             document.getElementById('active-order').style.display = 'none';
@@ -507,6 +505,7 @@
 
         socket.on('current_order_info', (response) => {
           addLog('Current order info received: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: current_order_info', response);
           currentOrder = response.data.order;
           updateActiveOrder();
         });
@@ -514,24 +513,54 @@
         // Xác nhận cập nhật vị trí
         socket.on('location_updated', (response) => {
           addLog('Location updated: ' + JSON.stringify(response.data.location), 'info');
+          console.log('EVENT: location_updated', response);
         });
+
+        // Bắt tất cả các sự kiện không được xử lý
+        const originalOn = socket.on;
+        socket.on = function (eventName, callback) {
+          if (eventName !== 'connect' &&
+            eventName !== 'disconnect' &&
+            eventName !== 'connect_error' &&
+            eventName !== 'authentication_success' &&
+            eventName !== 'authentication_error' &&
+            eventName !== 'driver_new_order_response_confirmed' &&
+            eventName !== 'new_order_request' &&
+            eventName !== 'order_status_updated_confirmation' &&
+            eventName !== 'order_status_updated' &&
+            eventName !== 'order_cancelled' &&
+            eventName !== 'order_completed' &&
+            eventName !== 'current_order_info' &&
+            eventName !== 'location_updated') {
+            originalOn.call(this, eventName, function (data) {
+              console.log('EVENT (unhandled):', eventName, data);
+              callback(data);
+            });
+          } else {
+            return originalOn.apply(this, arguments);
+          }
+        };
 
         socket.on('connection_success', (response) => {
           addLog('Connection successful: ' + response.message, 'success');
+          console.log('EVENT: connection_success', response);
         });
 
         socket.on('pong_server', (response) => {
           addLog('Pong from server: ' + response.data.timestamp, 'info');
+          console.log('EVENT: pong_server', response);
         });
 
         socket.on('error', (response) => {
           addLog('Error: ' + JSON.stringify(response), 'error');
+          console.log('EVENT: error', response);
         });
 
       } catch (error) {
         document.getElementById('socket-status').innerHTML = 'Error initializing socket: ' + error.message;
         document.getElementById('socket-status').className = 'status error';
         addLog('Socket initialization error: ' + error.message, 'error');
+        console.error('Socket initialization error:', error);
       }
     }
 

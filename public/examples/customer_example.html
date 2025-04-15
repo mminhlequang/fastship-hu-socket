@@ -288,16 +288,14 @@
       </div>
 
       <div id="login-tab" class="tab-content active">
-        <h2>Login</h2>
+        <h2>Access Token</h2>
         <div class="form-group">
-          <label for="phone">Phone Number</label>
-          <input type="text" id="phone" value="+84979797979" placeholder="Enter phone number">
+          <label for="access-token">Nhập Access Token</label>
+          <input type="text" id="access-token"
+            value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwicGhvbmUiOiIrODQ5Nzk3OTc5NzkiLCJ0eXBlIjoxLCJpYXQiOjE3MTg2MTc5MzksImV4cCI6MTcyMTIwOTkzOX0.Z-mPNZnSYDOlXtlKJO1awdFLTy0BoP6xc4MBGcxoAts"
+            placeholder="Nhập access token của khách hàng">
         </div>
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" value="123456" placeholder="Enter password">
-        </div>
-        <button id="login-btn" onclick="login()">Login</button>
+        <button id="login-btn" onclick="login()">Set Token</button>
         <div id="login-status" class="status"></div>
       </div>
 
@@ -314,52 +312,72 @@
 
       <div id="order-tab" class="tab-content">
         <h2>Create Order</h2>
-        <div id="location-inputs">
-          <div class="form-group">
-            <label for="pickup-address">Pickup Address</label>
-            <input type="text" id="pickup-address" value="Andrássy út 39, Budapest, Hungary"
-              placeholder="Enter pickup address">
-          </div>
-          <div class="form-group">
-            <label for="pickup-lat">Pickup Latitude</label>
-            <input type="number" id="pickup-lat" value="47.502" step="0.000001" placeholder="Latitude">
-          </div>
-          <div class="form-group">
-            <label for="pickup-lng">Pickup Longitude</label>
-            <input type="number" id="pickup-lng" value="19.057" step="0.000001" placeholder="Longitude">
-          </div>
-
-          <div class="form-group">
-            <label for="delivery-address">Delivery Address</label>
-            <input type="text" id="delivery-address" value="Váci utca 1, Budapest, Hungary"
-              placeholder="Enter delivery address">
-          </div>
-          <div class="form-group">
-            <label for="delivery-lat">Delivery Latitude</label>
-            <input type="number" id="delivery-lat" value="47.496" step="0.000001" placeholder="Latitude">
-          </div>
-          <div class="form-group">
-            <label for="delivery-lng">Delivery Longitude</label>
-            <input type="number" id="delivery-lng" value="19.050" step="0.000001" placeholder="Longitude">
-          </div>
-        </div>
-
-        <h3>Order Items</h3>
-        <div id="items-container">
-          <div class="item-row" id="item-1">
-            <input type="text" placeholder="Item name" value="Hamburger">
-            <input type="number" placeholder="Quantity" value="2" min="1" style="width: 80px;">
-            <input type="number" placeholder="Price" value="10" min="0" style="width: 80px;">
-            <button class="remove-item" onclick="removeItem('item-1')">×</button>
-          </div>
-        </div>
-        <button onclick="addItem()">Add Item</button>
-
         <div class="form-group">
-          <label for="order-notes">Notes</label>
-          <textarea id="order-notes" placeholder="Special instructions, etc.">Please deliver quickly</textarea>
+          <label for="order-json">Thông tin đơn hàng (JSON)</label>
+          <textarea id="order-json" style="height: 500px; font-family: monospace; white-space: pre; font-size: 14px;"
+            spellcheck="false">
+{
+  "currency": "eur",
+  "delivery_type": "ship",
+  "payment_status": "pending",
+  "process_status": "pending",
+  "note": "Vui lòng giao hàng nhanh",
+  "payment": {
+    "id": 5,
+    "name": "Cash",
+    "is_active": 1,
+    "is_order_payment": 1
+  },
+  "store": {
+    "id": 16,
+    "name": "Blueberry brunch",
+    "address": "Hercegprímás utca, Budapest 1051, Hungary",
+    "phone": "+3687264865",
+    "street": "Hercegprímás utca",
+    "zip": "1051",
+    "city": "Budapest",
+    "state": "Budapest",
+    "country": "Hungary",
+    "country_code": "HUN",
+    "lat": 47.50119,
+    "lng": 19.05297
+  },
+  "items": [
+    {
+      "price": 40,
+      "quantity": 1,
+      "product": {
+        "id": 28,
+        "name": "Pizaa eggs",
+        "price": 40,
+        "price_compare": 45,
+        "description": "Our spot for all day brunch in the heart of Budapest."
+      },
+      "variations": [],
+      "toppings": []
+    }
+  ],
+  "phone": "+84979797979",
+  "street": "Budapest",
+  "zip": "1072",
+  "city": "Budapest",
+  "state": null,
+  "country": "Hungary",
+  "country_code": "HU",
+  "lat": 47.495986,
+  "lng": 19.065386,
+  "address": "Budapest, Budapest",
+  "ship_fee": 0,
+  "tip": 0,
+  "discount": 0,
+  "application_fee": 1.2,
+  "subtotal": 40,
+  "total": 41.2,
+  "ship_distance": 1742,
+  "ship_estimate_time": "5 min"
+}
+</textarea>
         </div>
-
         <button id="create-order-btn" class="primary-btn" onclick="createOrder()">Create Order</button>
         <div id="order-status" class="status"></div>
       </div>
@@ -458,55 +476,35 @@
 
     // Login function
     async function login () {
-      const phone = document.getElementById('phone').value;
-      const password = document.getElementById('password').value;
+      const token = document.getElementById('access-token').value.trim();
       const loginStatus = document.getElementById('login-status');
 
-      if (!phone || !password) {
-        loginStatus.innerHTML = 'Please enter phone number and password';
+      if (!token) {
+        loginStatus.innerHTML = 'Vui lòng nhập access token';
         loginStatus.className = 'status error';
         return;
       }
 
-      loginStatus.innerHTML = 'Logging in...';
+      loginStatus.innerHTML = 'Đang thiết lập token...';
       loginStatus.className = 'status';
 
       try {
-        const response = await fetch('https://zennail23.com/api/v1/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '',
-            'accept': '*/*'
-          },
-          body: JSON.stringify({
-            phone: phone,
-            password: password,
-            type: 1 // Customer type
-          })
-        });
+        accessToken = token;
+        loginStatus.innerHTML = 'Token đã được thiết lập: ' + accessToken.substring(0, 10) + '...';
+        loginStatus.className = 'status success';
+        addLog('Token set successfully', 'success');
 
-        const data = await response.json();
+        // Đặt customerId (sẽ được cập nhật sau khi xác thực với socket)
+        customerId = 1;
 
-        if (data.status === true && data.data && data.data.access_token) {
-          accessToken = data.data.access_token;
-          loginStatus.innerHTML = 'Login successful! Token: ' + accessToken.substring(0, 10) + '...';
-          loginStatus.className = 'status success';
-          addLog('Login successful', 'success');
-
-          // Auto switch to socket tab
-          setTimeout(() => {
-            openTab('socket-tab');
-          }, 1000);
-        } else {
-          loginStatus.innerHTML = 'Login failed: ' + (data.message || 'Unknown error');
-          loginStatus.className = 'status error';
-          addLog('Login failed: ' + (data.message || 'Unknown error'), 'error');
-        }
+        // Auto switch to socket tab
+        setTimeout(() => {
+          openTab('socket-tab');
+        }, 1000);
       } catch (error) {
-        loginStatus.innerHTML = 'Error: ' + error.message;
+        loginStatus.innerHTML = 'Lỗi: ' + error.message;
         loginStatus.className = 'status error';
-        addLog('Login error: ' + error.message, 'error');
+        addLog('Token error: ' + error.message, 'error');
       }
     }
 
@@ -530,6 +528,13 @@
           reconnectionDelay: 1000
         });
 
+        // Log all emits
+        const originalEmit = socket.emit;
+        socket.emit = function (eventName, payload) {
+          console.log('EMIT:', eventName, payload);
+          return originalEmit.apply(this, arguments);
+        };
+
         // Connection events
         socket.on('connect', () => {
           document.getElementById('socket-status').innerHTML = 'Connected to server. Socket ID: ' + socket.id;
@@ -537,6 +542,7 @@
           document.getElementById('connect-btn').disabled = true;
           document.getElementById('disconnect-btn').disabled = false;
           addLog('Socket connected. Socket ID: ' + socket.id, 'success');
+          console.log('EVENT: connect', socket.id);
 
           // Authenticate customer
           socket.emit('authenticate_customer', { token: accessToken });
@@ -548,17 +554,20 @@
           document.getElementById('connect-btn').disabled = false;
           document.getElementById('disconnect-btn').disabled = true;
           addLog('Socket disconnected. Reason: ' + reason, 'error');
+          console.log('EVENT: disconnect', reason);
         });
 
         socket.on('connect_error', (error) => {
           document.getElementById('socket-status').innerHTML = 'Connection error: ' + error.message;
           document.getElementById('socket-status').className = 'status error';
           addLog('Socket connection error: ' + error.message, 'error');
+          console.log('EVENT: connect_error', error);
         });
 
         // Authentication events
         socket.on('authentication_success', (response) => {
           addLog('Authentication successful: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: authentication_success', response);
           customerId = response.data.customerId;
 
           document.getElementById('socket-status').innerHTML = 'Authenticated as Customer ID: ' + customerId;
@@ -571,6 +580,7 @@
 
         socket.on('authentication_error', (response) => {
           addLog('Authentication error: ' + response.message, 'error');
+          console.log('EVENT: authentication_error', response);
           document.getElementById('socket-status').innerHTML = 'Authentication failed: ' + response.message;
           document.getElementById('socket-status').className = 'status error';
         });
@@ -578,6 +588,7 @@
         // Order-related events
         socket.on('create_order_result', (response) => {
           addLog('Order result received: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: create_order_result', response);
           const orderId = response.data.id;
           const processStatus = response.data.process_status;
 
@@ -587,18 +598,18 @@
               id: orderId,
               process_status: processStatus,
               // Lấy thông tin khác từ form
-              pickup_address: document.getElementById('pickup-address').value,
-              pickup_lat: parseFloat(document.getElementById('pickup-lat').value),
-              pickup_lng: parseFloat(document.getElementById('pickup-lng').value),
-              delivery_address: document.getElementById('delivery-address').value,
-              delivery_lat: parseFloat(document.getElementById('delivery-lat').value),
-              delivery_lng: parseFloat(document.getElementById('delivery-lng').value),
-              distance: calculateDistance(
+              pickup_address: document.getElementById('pickup-address')?.value || '',
+              pickup_lat: parseFloat(document.getElementById('pickup-lat')?.value || 0),
+              pickup_lng: parseFloat(document.getElementById('pickup-lng')?.value || 0),
+              delivery_address: document.getElementById('delivery-address')?.value || '',
+              delivery_lat: parseFloat(document.getElementById('delivery-lat')?.value || 0),
+              delivery_lng: parseFloat(document.getElementById('delivery-lng')?.value || 0),
+              distance: document.getElementById('pickup-lat') ? calculateDistance(
                 parseFloat(document.getElementById('pickup-lat').value),
                 parseFloat(document.getElementById('pickup-lng').value),
                 parseFloat(document.getElementById('delivery-lat').value),
                 parseFloat(document.getElementById('delivery-lng').value)
-              ).toFixed(2),
+              ).toFixed(2) : 0,
               created_at: new Date().toISOString()
             };
           } else {
@@ -619,6 +630,7 @@
 
         socket.on('order_status_updated', (response) => {
           addLog('Order status updated: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: order_status_updated', response);
           if (activeOrder && activeOrder.id === response.data.orderId) {
             activeOrder.process_status = response.data.processStatus;
             updateOrderDisplay();
@@ -627,11 +639,13 @@
 
         socket.on('driver_location_update', (response) => {
           addLog('Driver location updated: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: driver_location_update', response);
           // Có thể cập nhật vị trí tài xế trên bản đồ nếu có
         });
 
         socket.on('order_completed', (response) => {
           addLog('Order completed: ' + JSON.stringify(response.data), 'success');
+          console.log('EVENT: order_completed', response);
           if (activeOrder && activeOrder.id === response.data.orderId) {
             activeOrder.process_status = OrderProcessStatus.COMPLETED;
             updateOrderDisplay();
@@ -646,6 +660,7 @@
 
         socket.on('order_cancelled', (response) => {
           addLog('Order cancelled: ' + JSON.stringify(response.data), 'warning');
+          console.log('EVENT: order_cancelled', response);
           if (activeOrder && activeOrder.id === response.data.orderId) {
             activeOrder.process_status = OrderProcessStatus.CANCELLED;
             updateOrderDisplay();
@@ -660,18 +675,44 @@
 
         socket.on('driver_rejected_order', (response) => {
           addLog('Driver rejected order: ' + JSON.stringify(response.data), 'warning');
+          console.log('EVENT: driver_rejected_order', response);
           // Thông báo cho người dùng tài xế đã từ chối đơn
         });
+
+        // Bắt tất cả các sự kiện không được xử lý
+        const originalOn = socket.on;
+        socket.on = function (eventName, callback) {
+          if (eventName !== 'connect' &&
+            eventName !== 'disconnect' &&
+            eventName !== 'connect_error' &&
+            eventName !== 'authentication_success' &&
+            eventName !== 'authentication_error' &&
+            eventName !== 'create_order_result' &&
+            eventName !== 'order_status_updated' &&
+            eventName !== 'driver_location_update' &&
+            eventName !== 'order_completed' &&
+            eventName !== 'order_cancelled' &&
+            eventName !== 'driver_rejected_order') {
+            originalOn.call(this, eventName, function (data) {
+              console.log('EVENT (unhandled):', eventName, data);
+              callback(data);
+            });
+          } else {
+            return originalOn.apply(this, arguments);
+          }
+        };
 
         // Bắt các lỗi
         socket.on('error', (response) => {
           addLog('Error: ' + JSON.stringify(response), 'error');
+          console.log('EVENT: error', response);
         });
 
       } catch (error) {
         document.getElementById('socket-status').innerHTML = 'Error initializing socket: ' + error.message;
         document.getElementById('socket-status').className = 'status error';
         addLog('Socket initialization error: ' + error.message, 'error');
+        console.error('Socket initialization error:', error);
       }
     }
 
@@ -725,89 +766,34 @@
         return;
       }
 
-      // Get location data
-      const pickupAddress = document.getElementById('pickup-address').value;
-      const pickupLat = parseFloat(document.getElementById('pickup-lat').value);
-      const pickupLng = parseFloat(document.getElementById('pickup-lng').value);
+      try {
+        // Lấy dữ liệu JSON từ textarea và gửi trực tiếp
+        const orderData = JSON.parse(document.getElementById('order-json').value);
 
-      const deliveryAddress = document.getElementById('delivery-address').value;
-      const deliveryLat = parseFloat(document.getElementById('delivery-lat').value);
-      const deliveryLng = parseFloat(document.getElementById('delivery-lng').value);
+        // Gửi đơn hàng đến server
+        socket.emit('create_order', orderData);
 
-      // Get order items
-      const itemRows = document.querySelectorAll('.item-row');
-      const items = [];
-      let totalAmount = 0;
-
-      itemRows.forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        const name = inputs[0].value.trim();
-        const quantity = parseInt(inputs[1].value);
-        const price = parseFloat(inputs[2].value);
-
-        if (name && quantity > 0) {
-          items.push({
-            name,
-            quantity,
-            price
-          });
-
-          totalAmount += price * quantity;
-        }
-      });
-
-      if (items.length === 0) {
         const orderStatus = document.getElementById('order-status');
-        orderStatus.innerHTML = 'Please add at least one item';
+        orderStatus.innerHTML = 'Đã gửi đơn hàng đến server...';
+        orderStatus.className = 'status info';
+
+        addLog('Order created and sent to server: ' + JSON.stringify(orderData), 'info');
+
+        // Cập nhật activeOrder để hiển thị
+        activeOrder = orderData;
+        activeOrder.process_status = activeOrder.process_status || OrderProcessStatus.PENDING;
+        updateOrderDisplay();
+
+        // Chuyển đến tab theo dõi
+        setTimeout(() => {
+          openTab('tracking-tab');
+        }, 1000);
+      } catch (error) {
+        const orderStatus = document.getElementById('order-status');
+        orderStatus.innerHTML = 'Lỗi tạo đơn hàng: ' + error.message;
         orderStatus.className = 'status error';
-        return;
+        addLog('Error creating order: ' + error.message, 'error');
       }
-
-      // Get notes
-      const notes = document.getElementById('order-notes').value;
-
-      // Calculate distance (simple straight-line distance for demonstration)
-      const distance = calculateDistance(pickupLat, pickupLng, deliveryLat, deliveryLng);
-
-      // Create order object
-      const order = {
-        id: 'ORD-' + Date.now(), // Tạm thời, server sẽ tạo ID chính thức
-        customer_id: customerId,
-        pickup_address: pickupAddress,
-        pickup_lat: pickupLat,
-        pickup_lng: pickupLng,
-        delivery_address: deliveryAddress,
-        delivery_lat: deliveryLat,
-        delivery_lng: deliveryLng,
-        items: items,
-        notes: notes,
-        distance: distance.toFixed(2),
-        currency: 'EUR',
-        price: totalAmount.toFixed(2),
-        status: 'new',
-        created_at: new Date().toISOString(),
-        accessToken: accessToken // Gửi kèm token để server xác thực
-      };
-
-      // Send order to server
-      socket.emit('create_order', order);
-
-      const orderStatus = document.getElementById('order-status');
-      orderStatus.innerHTML = 'Order created and sent to server...';
-      orderStatus.className = 'status info';
-
-      addLog('Order created and sent to server: ' + JSON.stringify(order), 'info');
-
-      // For demo purposes, we'll set the activeOrder directly
-      // In a real application, we would wait for server confirmation
-      activeOrder = order;
-      activeOrder.process_status = OrderProcessStatus.PENDING;
-      updateOrderDisplay();
-
-      // Switch to tracking tab
-      setTimeout(() => {
-        openTab('tracking-tab');
-      }, 1000);
     }
 
     // Update the order display
