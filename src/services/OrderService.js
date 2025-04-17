@@ -114,15 +114,25 @@ class OrderService {
 
     // Lấy danh sách tài xế đang hoạt động
     const availableDrivers = driverService.getOnlineDrivers(false);
+    console.log(`[OrderService] Tìm tài xế cho đơn hàng ${orderId}. Số lượng tài xế online: ${availableDrivers.length}`);
 
     if (availableDrivers.length === 0) {
-      console.log(`Không có tài xế khả dụng cho đơn hàng: ${orderId}`);
+      console.log(`[OrderService] Không có tài xế khả dụng cho đơn hàng: ${orderId}`);
       return null;
     }
 
+    // Log danh sách tài xế online
+    console.log(`[OrderService] Danh sách tài xế online:`, availableDrivers.map(driver => ({
+      id: driver.id || driver.driverData?.id,
+      isOnline: driver.isOnline,
+      isBusy: driver.isBusy,
+      socketId: driver.socketId
+    })));
+
     // Nếu có tọa độ trong orderDetails, sắp xếp tài xế theo khoảng cách
-    if (order.store.lat && order.store.lng) {
+    if (order.store?.lat && order.store?.lng) {
       const { lat, lng } = order.store;
+      console.log(`[OrderService] Tìm tài xế theo khoảng cách cho đơn hàng ${orderId}. Tọa độ cửa hàng: lat=${lat}, lng=${lng}`);
 
       // Tính khoảng cách cho mỗi tài xế
       const driversWithDistance = availableDrivers
@@ -136,13 +146,18 @@ class OrderService {
         })
         .sort((a, b) => a.distance - b.distance);
 
+      console.log(`[OrderService] Số lượng tài xế có vị trí và có thể tính khoảng cách: ${driversWithDistance.length}`);
+
       // Trả về mảng đã sắp xếp theo khoảng cách
       if (driversWithDistance.length > 0) {
+        console.log(`[OrderService] Tài xế gần nhất cho đơn hàng ${orderId}: driverId=${driversWithDistance[0].driver.id || driversWithDistance[0].driver.driverData?.id}, distance=${driversWithDistance[0].distance}km`);
         return {
           driversList: driversWithDistance,
           nextDriverIndex: 0
         };
       }
+    } else {
+      console.log(`[OrderService] Không có tọa độ cửa hàng cho đơn hàng ${orderId}. store.lat=${order.store?.lat}, store.lng=${order.store?.lng}`);
     }
 
     // Nếu không có tọa độ hoặc không tìm được tài xế gần nhất, trả về danh sách ngẫu nhiên
@@ -151,6 +166,7 @@ class OrderService {
       distance: null
     }));
 
+    console.log(`[OrderService] Trả về danh sách tài xế ngẫu nhiên cho đơn hàng ${orderId}. Số lượng: ${randomizedDrivers.length}`);
     return {
       driversList: randomizedDrivers,
       nextDriverIndex: 0
@@ -173,7 +189,10 @@ class OrderService {
   // Đánh dấu tài xế đã được gửi thông báo chờ phản hồi
   async markDriverNotified (orderId, driverId) {
     const order = await this.getOrderById(orderId);
-    if (!order) return false;
+    if (!order) {
+      console.log(`[OrderService] markDriverNotified: Không tìm thấy đơn hàng ${orderId}`);
+      return false;
+    }
 
     // Lưu lại danh sách tài xế đã được thông báo
     if (!order.notifiedDrivers) {
@@ -182,6 +201,9 @@ class OrderService {
 
     if (!order.notifiedDrivers.includes(driverId)) {
       order.notifiedDrivers.push(driverId);
+      console.log(`[OrderService] Đã đánh dấu tài xế ${driverId} đã nhận thông báo cho đơn hàng ${orderId}. Danh sách notifiedDrivers: ${order.notifiedDrivers}`);
+    } else {
+      console.log(`[OrderService] Tài xế ${driverId} đã có trong danh sách notifiedDrivers của đơn hàng ${orderId}`);
     }
 
     return true;
@@ -190,7 +212,10 @@ class OrderService {
   // Đánh dấu tài xế đã từ chối đơn hàng
   async markDriverRejected (orderId, driverId, reason = 'Không có lý do') {
     const order = await this.getOrderById(orderId);
-    if (!order) return false;
+    if (!order) {
+      console.log(`[OrderService] markDriverRejected: Không tìm thấy đơn hàng ${orderId}`);
+      return false;
+    }
 
     // Lưu lại danh sách tài xế đã từ chối
     if (!order.rejectedDrivers) {
@@ -203,6 +228,9 @@ class OrderService {
         reason,
         timestamp: new Date().toISOString()
       });
+      console.log(`[OrderService] Đã đánh dấu tài xế ${driverId} đã từ chối đơn hàng ${orderId} với lý do: ${reason}. Số lượng tài xế đã từ chối: ${order.rejectedDrivers.length}`);
+    } else {
+      console.log(`[OrderService] Tài xế ${driverId} đã có trong danh sách rejectedDrivers của đơn hàng ${orderId}`);
     }
 
     return true;
@@ -211,17 +239,27 @@ class OrderService {
   // Kiểm tra xem tài xế đã được thông báo chưa
   async hasDriverBeenNotified (orderId, driverId) {
     const order = await this.getOrderById(orderId);
-    if (!order || !order.notifiedDrivers) return false;
+    if (!order || !order.notifiedDrivers) {
+      console.log(`[OrderService] hasDriverBeenNotified: Đơn hàng ${orderId} không tồn tại hoặc không có danh sách notifiedDrivers`);
+      return false;
+    }
 
-    return order.notifiedDrivers.includes(driverId);
+    const result = order.notifiedDrivers.includes(driverId);
+    console.log(`[OrderService] Tài xế ${driverId} ${result ? "đã" : "chưa"} được thông báo về đơn hàng ${orderId}`);
+    return result;
   }
 
   // Kiểm tra xem tài xế đã từ chối chưa
   async hasDriverRejected (orderId, driverId) {
     const order = await this.getOrderById(orderId);
-    if (!order || !order.rejectedDrivers) return false;
+    if (!order || !order.rejectedDrivers) {
+      console.log(`[OrderService] hasDriverRejected: Đơn hàng ${orderId} không tồn tại hoặc không có danh sách rejectedDrivers`);
+      return false;
+    }
 
-    return order.rejectedDrivers.some(d => d.driverId === driverId);
+    const result = order.rejectedDrivers.some(d => d.driverId === driverId);
+    console.log(`[OrderService] Tài xế ${driverId} ${result ? "đã" : "chưa"} từ chối đơn hàng ${orderId}`);
+    return result;
   }
 
   // Gán đơn hàng cho tài xế

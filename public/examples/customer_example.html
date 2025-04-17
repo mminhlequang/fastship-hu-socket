@@ -572,6 +572,9 @@
 
           document.getElementById('socket-status').innerHTML = 'Authenticated as Customer ID: ' + customerId;
 
+          // Yêu cầu thông tin đơn hàng hiện tại sau khi xác thực thành công
+          requestCurrentOrder();
+
           // Auto switch to order creation tab
           setTimeout(() => {
             openTab('order-tab');
@@ -583,6 +586,22 @@
           console.log('EVENT: authentication_error', response);
           document.getElementById('socket-status').innerHTML = 'Authentication failed: ' + response.message;
           document.getElementById('socket-status').className = 'status error';
+        });
+
+        // Thêm handler cho việc nhận thông tin đơn hàng hiện tại
+        socket.on('current_order_info', (response) => {
+          addLog('Current order info received: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: current_order_info', response);
+
+          if (response.data && response.data.order) {
+            activeOrder = response.data.order;
+            updateOrderDisplay();
+
+            // Tự động chuyển đến tab đơn hàng nếu có đơn hàng đang hoạt động
+            openTab('tracking-tab');
+          } else {
+            addLog('No active order for customer', 'info');
+          }
         });
 
         // Order-related events
@@ -692,6 +711,7 @@
             eventName !== 'driver_location_update' &&
             eventName !== 'order_completed' &&
             eventName !== 'order_cancelled' &&
+            eventName !== 'current_order_info' &&
             eventName !== 'driver_rejected_order') {
             originalOn.call(this, eventName, function (data) {
               console.log('EVENT (unhandled):', eventName, data);
@@ -812,48 +832,117 @@
 
       // Update order details
       const orderDetails = document.getElementById('order-details');
+
+      // Tạo văn bản mô tả trạng thái đơn hàng dễ hiểu hơn
+      let statusText = activeOrder.process_status || 'Pending';
+      let statusClass = '';
+
+      switch (activeOrder.process_status) {
+        case OrderProcessStatus.PENDING:
+          statusText = 'Đơn hàng đã đặt';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.FIND_DRIVER:
+          statusText = 'Đang tìm tài xế';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.DRIVER_ACCEPTED:
+          statusText = 'Tài xế đã nhận đơn';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.STORE_ACCEPTED:
+          statusText = 'Cửa hàng đã nhận đơn';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.DRIVER_ARRIVED_STORE:
+          statusText = 'Tài xế đã đến cửa hàng';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.DRIVER_PICKED:
+          statusText = 'Tài xế đã lấy hàng và đang giao';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.DRIVER_ARRIVED_DESTINATION:
+          statusText = 'Tài xế đã đến điểm giao hàng';
+          statusClass = 'info';
+          break;
+        case OrderProcessStatus.COMPLETED:
+          statusText = 'Đơn hàng đã hoàn thành';
+          statusClass = 'success';
+          break;
+        case OrderProcessStatus.CANCELLED:
+          statusText = 'Đơn hàng đã bị hủy';
+          statusClass = 'error';
+          break;
+        default:
+          statusText = activeOrder.process_status || 'Chưa xác định';
+          break;
+      }
+
       orderDetails.innerHTML = `
                 <div><strong class="order-id">Order ID: ${activeOrder.id}</strong></div>
-                <div><strong>Status:</strong> ${activeOrder.process_status || 'Pending'}</div>
-                <div><strong>Pickup:</strong> ${activeOrder.pickup_address}</div>
-                <div><strong>Delivery:</strong> ${activeOrder.delivery_address}</div>
-                <div><strong>Distance:</strong> ${activeOrder.distance} km</div>
-                <div><strong>Price:</strong> ${activeOrder.price} ${activeOrder.currency}</div>
-                <div><strong>Created:</strong> ${new Date(activeOrder.created_at).toLocaleString()}</div>
+                <div><strong>Trạng thái:</strong> <span class="${statusClass}">${statusText}</span> (${activeOrder.process_status})</div>
+                <div><strong>Địa điểm lấy hàng:</strong> ${activeOrder.pickup_address || activeOrder.store?.address || 'Unknown'}</div>
+                <div><strong>Địa điểm giao hàng:</strong> ${activeOrder.delivery_address || activeOrder.address || 'Unknown'}</div>
+                <div><strong>Khoảng cách:</strong> ${activeOrder.distance || activeOrder.ship_distance / 1000 || 0} km</div>
+                <div><strong>Giá:</strong> ${activeOrder.price || activeOrder.total || 0} ${activeOrder.currency || 'EUR'}</div>
+                <div><strong>Thời gian tạo:</strong> ${new Date(activeOrder.created_at || Date.now()).toLocaleString()}</div>
             `;
 
       // Update progress circles
       const progressSteps = [
-        { id: 'progress-pending', status: OrderProcessStatus.PENDING },
-        { id: 'progress-finding', status: OrderProcessStatus.FIND_DRIVER },
-        { id: 'progress-accepted', status: OrderProcessStatus.DRIVER_ACCEPTED },
-        { id: 'progress-picked', status: OrderProcessStatus.DRIVER_PICKED },
-        { id: 'progress-delivered', status: OrderProcessStatus.COMPLETED }
+        { id: 'progress-pending', status: OrderProcessStatus.PENDING, label: 'Order Placed' },
+        { id: 'progress-finding', status: OrderProcessStatus.FIND_DRIVER, label: 'Finding Driver' },
+        { id: 'progress-accepted', status: OrderProcessStatus.DRIVER_ACCEPTED, label: 'Driver Accepted' },
+        { id: 'progress-picked', status: OrderProcessStatus.DRIVER_PICKED, label: 'Order Picked Up' },
+        { id: 'progress-delivered', status: OrderProcessStatus.COMPLETED, label: 'Delivered' }
       ];
 
-      let currentStepReached = false;
+      // Định nghĩa thứ tự trạng thái để xác định các bước đã hoàn thành
+      const statusOrder = [
+        OrderProcessStatus.PENDING,
+        OrderProcessStatus.FIND_DRIVER,
+        OrderProcessStatus.DRIVER_ACCEPTED,
+        OrderProcessStatus.STORE_ACCEPTED,
+        OrderProcessStatus.DRIVER_ARRIVED_STORE,
+        OrderProcessStatus.DRIVER_PICKED,
+        OrderProcessStatus.DRIVER_ARRIVED_DESTINATION,
+        OrderProcessStatus.COMPLETED
+      ];
 
+      // Lấy index của trạng thái hiện tại
+      const currentStatusIndex = statusOrder.indexOf(activeOrder.process_status);
+
+      // Cập nhật trạng thái hiển thị cho từng bước
       progressSteps.forEach(step => {
         const element = document.getElementById(step.id);
-
-        // Reset class
         element.className = 'progress-circle';
 
-        // Check if this step is active or past
-        if (!currentStepReached) {
-          if (activeOrder.process_status === step.status) {
-            element.classList.add('active');
-            currentStepReached = true;
-          } else if (
-            (step.status === OrderProcessStatus.PENDING) ||
-            (step.status === OrderProcessStatus.FIND_DRIVER && activeOrder.process_status !== OrderProcessStatus.PENDING) ||
-            (step.status === OrderProcessStatus.DRIVER_ACCEPTED &&
-              [OrderProcessStatus.DRIVER_ARRIVED_STORE, OrderProcessStatus.DRIVER_PICKED, OrderProcessStatus.DRIVER_ARRIVED_DESTINATION, OrderProcessStatus.COMPLETED].includes(activeOrder.process_status)) ||
-            (step.status === OrderProcessStatus.DRIVER_PICKED &&
-              [OrderProcessStatus.DRIVER_ARRIVED_DESTINATION, OrderProcessStatus.COMPLETED].includes(activeOrder.process_status))
-          ) {
-            element.classList.add('active');
-          }
+        // Xác định vị trí của bước này trong quy trình
+        const stepStatusIndex = statusOrder.indexOf(step.status);
+
+        // Nếu đơn hàng bị hủy, không hiển thị bước nào là hoàn thành
+        if (activeOrder.process_status === OrderProcessStatus.CANCELLED) {
+          // Không đánh dấu bước nào là hoàn thành
+          element.classList.remove('active');
+        }
+        // Đánh dấu hoàn thành nếu đã vượt qua bước này
+        else if (stepStatusIndex <= currentStatusIndex) {
+          element.classList.add('active');
+        }
+
+        // Cập nhật nhãn hiển thị dựa trên trạng thái đơn hàng hiện tại
+        if (step.id === 'progress-accepted' &&
+          [OrderProcessStatus.DRIVER_ARRIVED_STORE, OrderProcessStatus.STORE_ACCEPTED].includes(activeOrder.process_status)) {
+          // Cập nhật văn bản nếu tài xế đã đến cửa hàng
+          document.querySelector(`#${step.id} + .progress-text`).textContent = 'Driver At Store';
+        } else if (step.id === 'progress-picked' &&
+          OrderProcessStatus.DRIVER_ARRIVED_DESTINATION === activeOrder.process_status) {
+          // Cập nhật văn bản nếu tài xế đã đến điểm giao hàng
+          document.querySelector(`#${step.id} + .progress-text`).textContent = 'Driver At Destination';
+        } else {
+          // Khôi phục văn bản mặc định
+          document.querySelector(`#${step.id} + .progress-text`).textContent = step.label;
         }
       });
 
@@ -935,6 +1024,24 @@
     function clearLogs () {
       document.getElementById('log-container').innerHTML = '';
       addLog('Logs cleared', 'info');
+    }
+
+    // Thêm hàm yêu cầu thông tin đơn hàng hiện tại
+    function requestCurrentOrder () {
+      if (!socket || !socket.connected) {
+        addLog('Cannot request current order: Socket not connected', 'error');
+        return;
+      }
+
+      if (!customerId) {
+        addLog('Cannot request current order: Customer ID not available', 'error');
+        return;
+      }
+
+      // Lưu ý: Server tự động gửi đơn hàng hiện tại sau khi xác thực thành công trong một số trường hợp.
+      // Phần này chỉ dùng khi cần yêu cầu lại thông tin đơn hàng hiện tại.
+      socket.emit('ping_server', { timestamp: new Date().toISOString(), message: 'check_current_order' });
+      addLog('Checking connection and current order status...', 'info');
     }
   </script>
 </body>

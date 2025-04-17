@@ -260,6 +260,15 @@
         </div>
         <button onclick="updateLocation()">Update Location Now</button>
         <button onclick="toggleAutoLocation()" id="toggle-auto-btn">Stop Auto Update</button>
+
+        <div class="form-group" style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
+          <label>Driver Status</label>
+          <div id="driver-current-status">Unknown</div>
+          <button onclick="updateDriverStatus('online')" style="background-color: #4CAF50;">Go Online</button>
+          <button onclick="updateDriverStatus('offline')" style="background-color: #f44336;">Go Offline</button>
+          <button onclick="checkDriverStatus()" style="background-color: #2196F3;">Check Status</button>
+        </div>
+
         <div id="location-status" class="status"></div>
       </div>
 
@@ -424,11 +433,17 @@
           // Enable driver status buttons
           document.getElementById('socket-status').innerHTML = 'Authenticated as Driver ID: ' + driverId;
 
-          // Update driver status
+          // Gửi rõ ràng trạng thái online sau khi xác thực
           updateDriverStatus('online');
+
+          // Gửi ngay vị trí hiện tại một lần trước khi bắt đầu tự động cập nhật
+          updateLocation(true);
 
           // Start location updates
           startLocationUpdates();
+
+          // Yêu cầu thông tin đơn hàng hiện tại sau khi xác thực thành công
+          requestCurrentOrder();
 
           // Auto switch to location tab
           setTimeout(() => {
@@ -447,6 +462,26 @@
         socket.on('driver_new_order_response_confirmed', (response) => {
           addLog('Order response confirmed: ' + JSON.stringify(response.data), 'success');
           console.log('EVENT: driver_new_order_response_confirmed', response);
+        });
+
+        // Sự kiện nhận yêu cầu đơn hàng mới cho tài xế
+        socket.on('driver_new_order_request', (response) => {
+          addLog('New order request received for driver: ' + JSON.stringify(response.data), 'info');
+          console.log('EVENT: driver_new_order_request', response);
+          newOrderRequest = response.data.order;
+
+          // Show new order request
+          document.getElementById('new-order').style.display = 'block';
+          document.getElementById('new-order-details').innerHTML = `
+            <div><strong class="order-id">Order ID: ${newOrderRequest.id}</strong></div>
+            <div>From: ${newOrderRequest.pickup_address || newOrderRequest.store?.address || 'Unknown'}</div>
+            <div>To: ${newOrderRequest.delivery_address || newOrderRequest.address || 'Unknown'}</div>
+            <div>Distance: ${newOrderRequest.distance || newOrderRequest.ship_distance / 1000 || 0} km</div>
+            <div>Price: ${newOrderRequest.price || newOrderRequest.total || 0} ${newOrderRequest.currency || 'EUR'}</div>
+          `;
+
+          // Auto switch to orders tab
+          openTab('orders-tab');
         });
 
         // Order-related events
@@ -506,8 +541,16 @@
         socket.on('current_order_info', (response) => {
           addLog('Current order info received: ' + JSON.stringify(response.data), 'info');
           console.log('EVENT: current_order_info', response);
-          currentOrder = response.data.order;
-          updateActiveOrder();
+
+          if (response.data && response.data.order) {
+            currentOrder = response.data.order;
+            updateActiveOrder();
+
+            // Tự động chuyển đến tab đơn hàng nếu có đơn hàng đang hoạt động
+            openTab('orders-tab');
+          } else {
+            addLog('No active order for driver', 'info');
+          }
         });
 
         // Xác nhận cập nhật vị trí
@@ -525,6 +568,7 @@
             eventName !== 'authentication_success' &&
             eventName !== 'authentication_error' &&
             eventName !== 'driver_new_order_response_confirmed' &&
+            eventName !== 'driver_new_order_request' &&
             eventName !== 'new_order_request' &&
             eventName !== 'order_status_updated_confirmation' &&
             eventName !== 'order_status_updated' &&
@@ -583,6 +627,23 @@
       }
     }
 
+    // Thêm hàm kiểm tra trạng thái tài xế
+    function checkDriverStatus () {
+      addLog('Current driver status: ' + driverStatus, 'info');
+      console.log('Current driver status:', driverStatus);
+      console.log('Driver ID:', driverId);
+      console.log('Socket connected:', socket && socket.connected);
+
+      document.getElementById('driver-current-status').textContent =
+        `Status: ${driverStatus} | ID: ${driverId} | Connected: ${socket && socket.connected ? 'Yes' : 'No'}`;
+
+      // Gửi ping đến server để kiểm tra kết nối
+      if (socket && socket.connected) {
+        socket.emit('ping_server', { timestamp: new Date().toISOString() });
+        addLog('Sent ping to server', 'info');
+      }
+    }
+
     // Update driver status
     function updateDriverStatus (status) {
       if (!socket || !socket.connected) {
@@ -591,8 +652,40 @@
       }
 
       driverStatus = status;
-      socket.emit('driver_update_status', { status: status });
+      socket.emit('driver_update_status', { status: status, id: driverId });
+      console.log('EMIT: driver_update_status', { status: status, id: driverId });
       addLog('Driver status updated to: ' + status, 'info');
+
+      // Thêm hiển thị trạng thái rõ ràng trên UI
+      const statusMessage = status === 'online' ? 'Online (Sẵn sàng nhận đơn)' : 'Offline (Không nhận đơn)';
+      document.getElementById('driver-current-status').textContent = statusMessage;
+      document.getElementById('location-status').innerHTML = 'Driver status: ' + statusMessage;
+      document.getElementById('location-status').className = status === 'online' ? 'status success' : 'status warning';
+    }
+
+    // Update driver location
+    function updateLocation (forceEmit = false) {
+      if (!socket || !socket.connected) {
+        addLog('Cannot update location: Socket not connected', 'error');
+        return;
+      }
+
+      // Generate random location in Budapest
+      const lat = getRandomInRange(BUDAPEST_LAT_MIN, BUDAPEST_LAT_MAX, 6);
+      const lng = getRandomInRange(BUDAPEST_LNG_MIN, BUDAPEST_LNG_MAX, 6);
+
+      // Update UI
+      document.getElementById('current-lat').textContent = lat;
+      document.getElementById('current-lng').textContent = lng;
+
+      // Send to server and explicitly log
+      socket.emit('driver_update_location', { latitude: lat, longitude: lng });
+      console.log('EMIT: driver_update_location', { latitude: lat, longitude: lng });
+
+      document.getElementById('location-status').innerHTML = 'Location updated: ' + lat + ', ' + lng;
+      document.getElementById('location-status').className = 'status success';
+
+      return { lat, lng };
     }
 
     // Start location updates
@@ -607,30 +700,15 @@
 
       // Set new interval
       const intervalSeconds = parseInt(document.getElementById('location-interval').value) || 5;
-      locationUpdateInterval = setInterval(updateLocation, intervalSeconds * 1000);
+      locationUpdateInterval = setInterval(() => updateLocation(), intervalSeconds * 1000);
       addLog('Auto location updates started (interval: ' + intervalSeconds + 's)', 'info');
-    }
 
-    // Update driver location
-    function updateLocation () {
-      if (!socket || !socket.connected) {
-        addLog('Cannot update location: Socket not connected', 'error');
-        return;
-      }
-
-      // Generate random location in Budapest
-      const lat = getRandomInRange(BUDAPEST_LAT_MIN, BUDAPEST_LAT_MAX, 6);
-      const lng = getRandomInRange(BUDAPEST_LNG_MIN, BUDAPEST_LNG_MAX, 6);
-
-      // Update UI
-      document.getElementById('current-lat').textContent = lat;
-      document.getElementById('current-lng').textContent = lng;
-
-      // Send to server
-      socket.emit('driver_update_location', { latitude: lat, longitude: lng });
-
-      document.getElementById('location-status').innerHTML = 'Location updated: ' + lat + ', ' + lng;
-      document.getElementById('location-status').className = 'status success';
+      // Set a ping interval to keep connection alive
+      setInterval(() => {
+        if (socket && socket.connected) {
+          socket.emit('ping_server', { timestamp: new Date().toISOString() });
+        }
+      }, 30000); // ping every 30 seconds
     }
 
     // Toggle auto location updates
@@ -640,6 +718,9 @@
       if (isAutoLocationEnabled) {
         startLocationUpdates();
         document.getElementById('toggle-auto-btn').textContent = 'Stop Auto Update';
+
+        // Ensure driver status is online when auto-update is enabled
+        updateDriverStatus('online');
       } else {
         if (locationUpdateInterval) {
           clearInterval(locationUpdateInterval);
@@ -647,6 +728,9 @@
         }
         document.getElementById('toggle-auto-btn').textContent = 'Start Auto Update';
         addLog('Auto location updates stopped', 'warning');
+
+        // Optionally set driver to offline when auto-update is disabled
+        // updateDriverStatus('offline');
       }
     }
 
@@ -740,27 +824,33 @@
       document.getElementById('active-order-details').innerHTML = `
                 <div><strong class="order-id">Order ID: ${currentOrder.id}</strong></div>
                 <div>Status: ${currentOrder.process_status || 'Unknown'}</div>
-                <div>From: ${currentOrder.pickup_address}</div>
-                <div>To: ${currentOrder.delivery_address}</div>
-                <div>Distance: ${currentOrder.distance} km</div>
-                <div>Price: ${currentOrder.price} ${currentOrder.currency}</div>
+                <div>From: ${currentOrder.pickup_address || currentOrder.store?.address || 'Unknown'}</div>
+                <div>To: ${currentOrder.delivery_address || currentOrder.address || 'Unknown'}</div>
+                <div>Distance: ${currentOrder.distance || currentOrder.ship_distance / 1000 || 0} km</div>
+                <div>Price: ${currentOrder.price || currentOrder.total || 0} ${currentOrder.currency || 'EUR'}</div>
             `;
 
       // Update action buttons based on current status
       const actionButtons = document.getElementById('order-actions');
       actionButtons.innerHTML = '';
 
-      if (currentOrder.process_status === OrderProcessStatus.DRIVER_ACCEPTED) {
-        actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_ARRIVED_STORE}')">Arrived at Store</button>`;
-      } else if (currentOrder.process_status === OrderProcessStatus.DRIVER_ARRIVED_STORE) {
-        actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_PICKED}')">Picked Up</button>`;
-      } else if (currentOrder.process_status === OrderProcessStatus.DRIVER_PICKED) {
-        actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_ARRIVED_DESTINATION}')">Arrived at Destination</button>`;
-      } else if (currentOrder.process_status === OrderProcessStatus.DRIVER_ARRIVED_DESTINATION) {
-        actionButtons.innerHTML += `<button class="update-btn" onclick="completeOrder()">Complete Order</button>`;
+      // Hiển thị nút theo trạng thái đơn hàng
+      switch (currentOrder.process_status) {
+        case OrderProcessStatus.DRIVER_ACCEPTED:
+          actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_ARRIVED_STORE}')">Arrived at Store</button>`;
+          break;
+        case OrderProcessStatus.DRIVER_ARRIVED_STORE:
+          actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_PICKED}')">Picked Up</button>`;
+          break;
+        case OrderProcessStatus.DRIVER_PICKED:
+          actionButtons.innerHTML += `<button class="update-btn" onclick="updateOrderStatus('${OrderProcessStatus.DRIVER_ARRIVED_DESTINATION}')">Arrived at Destination</button>`;
+          break;
+        case OrderProcessStatus.DRIVER_ARRIVED_DESTINATION:
+          actionButtons.innerHTML += `<button class="update-btn" onclick="completeOrder()">Complete Order</button>`;
+          break;
       }
 
-      // Always show cancel button except for completed orders
+      // Always show cancel button except for completed or cancelled orders
       if (currentOrder.process_status !== OrderProcessStatus.COMPLETED &&
         currentOrder.process_status !== OrderProcessStatus.CANCELLED) {
         actionButtons.innerHTML += `<button class="cancel-btn" onclick="cancelOrder()">Cancel Order</button>`;
@@ -768,6 +858,25 @@
 
       // Auto switch to orders tab
       openTab('orders-tab');
+    }
+
+    // Thêm hàm yêu cầu thông tin đơn hàng hiện tại
+    function requestCurrentOrder () {
+      if (!socket || !socket.connected) {
+        addLog('Cannot request current order: Socket not connected', 'error');
+        return;
+      }
+
+      if (!driverId) {
+        addLog('Cannot request current order: Driver ID not available', 'error');
+        return;
+      }
+
+      // Lưu ý: Server tự động gửi đơn hàng hiện tại sau khi xác thực thành công.
+      // Phần này chỉ dùng khi cần yêu cầu lại thông tin đơn hàng hiện tại.
+      // Vì không thấy sự kiện tương ứng trong server, ta gửi một ping để kiểm tra kết nối
+      socket.emit('ping_server', { timestamp: new Date().toISOString(), message: 'check_current_order' });
+      addLog('Checking connection and current order status...', 'info');
     }
 
     // Helper function to generate random number in range

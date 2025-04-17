@@ -55,12 +55,16 @@ class OrderController {
    */
   async findDriverForOrder (socket, order, io) {
     try {
+      console.log(`[OrderController] Bắt đầu tìm tài xế cho đơn hàng ${order.id}`);
 
       // Tìm danh sách tài xế phù hợp
       const result = await orderService.findDriverForOrder(order);
+      console.log(`[OrderController] Kết quả tìm tài xế:`, result ? `Tìm thấy ${result.driversList?.length || 0} tài xế` : 'Không tìm thấy tài xế nào');
 
       if (!result || !result.driversList || result.driversList.length === 0) {
         // Không tìm thấy tài xế
+        console.log(`[OrderController] Không tìm thấy tài xế cho đơn hàng ${order.id}`);
+
         // Phản hồi cho người tạo đơn
         SocketResponse.emitSuccess(socket, 'create_order_result', {
           id: order.id,
@@ -76,6 +80,16 @@ class OrderController {
       order.driversList = result.driversList;
       order.nextDriverIndex = 0;
 
+      console.log(`[OrderController] Danh sách tài xế cho đơn hàng ${order.id}:`,
+        order.driversList.map(d => ({
+          id: d.driver.id || d.driver.driverData?.id,
+          isOnline: d.driver.isOnline,
+          isBusy: d.driver.isBusy,
+          hasSocketId: !!d.driver.socketId,
+          distance: d.distance
+        }))
+      );
+
       // Thông báo cho người dùng rằng đang tìm tài xế
       // Phản hồi cho người tạo đơn
       SocketResponse.emitSuccess(socket, 'create_order_result', {
@@ -86,6 +100,7 @@ class OrderController {
       });
 
       // Bắt đầu gửi thông báo cho tài xế đầu tiên
+      console.log(`[OrderController] Bắt đầu gửi thông báo cho tài xế đầu tiên, đơn hàng ${order.id}`);
       this.sendOrderToNextDriver(order.id, io);
 
       return order;
@@ -105,21 +120,23 @@ class OrderController {
    */
   async sendOrderToNextDriver (orderId, io) {
     try {
+      console.log(`[OrderController] Gửi thông báo đơn hàng ${orderId} cho tài xế tiếp theo`);
+
       const order = await orderService.getOrderById(orderId);
       if (!order) {
-        console.error(`Không tìm thấy đơn hàng ${orderId}`);
+        console.error(`[OrderController] Không tìm thấy đơn hàng ${orderId}`);
         return null;
       }
 
       // Kiểm tra xem đơn hàng đã được gán cho tài xế nào chưa
       if ((order.process_status != null && order.process_status !== AppOrderProcessStatus.PENDING) || order.assignedDriverId) {
-        console.log(`Đơn hàng ${orderId} không cần tìm tài xế tiếp: status=${order.process_status}, assignedDriverId=${order.assignedDriverId}`);
+        console.log(`[OrderController] Đơn hàng ${orderId} không cần tìm tài xế tiếp: status=${order.process_status}, assignedDriverId=${order.assignedDriverId}`);
         return null;
       }
 
       // Nếu không có driversList, quá trình tìm tài xế chưa bắt đầu hoặc đã kết thúc
       if (!order.driversList || order.nextDriverIndex >= order.driversList.length) {
-        console.log(`Hết danh sách tài xế cho đơn hàng ${orderId}`);
+        console.log(`[OrderController] Hết danh sách tài xế cho đơn hàng ${orderId}. nextDriverIndex=${order.nextDriverIndex}, driversList.length=${order.driversList?.length}`);
         // Thông báo cho khách hàng rằng không tìm thấy tài xế
         SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'create_order_result', {
           orderId,
@@ -132,26 +149,44 @@ class OrderController {
       // Lấy tài xế tiếp theo từ danh sách
       const currentDriverInfo = order.driversList[order.nextDriverIndex];
       const driver = currentDriverInfo.driver;
+      console.log(`[OrderController] Tài xế tiếp theo cho đơn hàng ${orderId}:`, {
+        driverIndex: order.nextDriverIndex,
+        driverId: driver.driverData?.id,
+        isOnline: driver.isOnline,
+        socketId: driver.socketId,
+        distance: currentDriverInfo.distance
+      });
 
       // Kiểm tra xem tài xế đã từ chối đơn hàng này chưa hoặc đã nhận thông báo chưa
-      if (await orderService.hasDriverRejected(orderId, driver.driverData.id) ||
-        await orderService.hasDriverBeenNotified(orderId, driver.driverData.id)) {
+      const hasRejected = await orderService.hasDriverRejected(orderId, driver.driverData.id);
+      const hasBeenNotified = await orderService.hasDriverBeenNotified(orderId, driver.driverData.id);
+
+      console.log(`[OrderController] Kiểm tra tài xế ${driver.driverData.id} cho đơn hàng ${orderId}:`, {
+        hasRejected,
+        hasBeenNotified
+      });
+
+      if (hasRejected || hasBeenNotified) {
         // Bỏ qua tài xế này và chuyển sang tài xế tiếp theo
+        console.log(`[OrderController] Bỏ qua tài xế ${driver.driverData.id} vì đã từ chối hoặc đã nhận thông báo`);
         order.nextDriverIndex++;
         return this.sendOrderToNextDriver(orderId, io);
       }
 
       // Đánh dấu tài xế đã nhận thông báo
       await orderService.markDriverNotified(orderId, driver.driverData.id);
+      console.log(`[OrderController] Đã đánh dấu tài xế ${driver.driverData.id} đã nhận thông báo cho đơn hàng ${orderId}`);
 
       // Kiểm tra xem tài xế có online không và có socket không
       if (!driver.isOnline || !driver.socketId) {
         // Tài xế không online, chuyển sang tài xế tiếp theo
+        console.log(`[OrderController] Tài xế ${driver.driverData.id} không online hoặc không có socketId, chuyển sang tài xế tiếp theo`);
         order.nextDriverIndex++;
         return this.sendOrderToNextDriver(orderId, io);
       }
 
       // Gửi thông báo cho tài xế
+      console.log(`[OrderController] Gửi thông báo đơn hàng ${orderId} đến tài xế ${driver.driverData.id} với socketId ${driver.socketId}`);
       SocketResponse.emitSuccessToRoom(io, driver.socketId, 'driver_new_order_request', {
         order: order.getOrderData(),
         responseTimeout: 300, // Thời gian chờ phản hồi (giây)
@@ -160,16 +195,23 @@ class OrderController {
 
       // Thiết lập timeout để chuyển sang tài xế tiếp theo nếu không có phản hồi
       setTimeout(async () => {
+        console.log(`[OrderController] Timeout kiểm tra phản hồi của tài xế ${driver.driverData.id} cho đơn hàng ${orderId}`);
+
         // Kiểm tra lại xem đơn hàng có còn pending và chưa được gán không
         const currentOrder = await orderService.getOrderById(orderId);
         if (currentOrder && (currentOrder.process_status == null || currentOrder.process_status !== AppOrderProcessStatus.PENDING) && !currentOrder.assignedDriverId) {
           // Nếu tài xế hiện tại chưa phản hồi, chuyển sang tài xế tiếp theo
-          if (!await orderService.hasDriverRejected(orderId, driver.driverData.id)) {
+          const hasRejectedAfterTimeout = await orderService.hasDriverRejected(orderId, driver.driverData.id);
+          console.log(`[OrderController] Timeout check: tài xế ${driver.driverData.id} đã từ chối đơn hàng ${orderId}: ${hasRejectedAfterTimeout}`);
+
+          if (!hasRejectedAfterTimeout) {
             // Đánh dấu là tài xế đã từ chối (timeout)
             await orderService.markDriverRejected(orderId, driver.driverData.id, 'Không phản hồi trong thời gian cho phép');
+            console.log(`[OrderController] Đánh dấu tài xế ${driver.driverData.id} đã từ chối (timeout) đơn hàng ${orderId}`);
 
             // Thông báo cho tài xế rằng đã hết thời gian
             if (driver.socketId) {
+              console.log(`[OrderController] Gửi thông báo timeout cho tài xế ${driver.driverData.id}`);
               SocketResponse.emitToRoom(io, driver.socketId, 'order_request_timeout', true, MessageCodes.REQUEST_TIMEOUT, {
                 orderId,
                 message: 'Hết thời gian phản hồi cho đơn hàng này'
@@ -179,13 +221,16 @@ class OrderController {
 
           // Cập nhật chỉ số và gửi cho tài xế tiếp theo
           currentOrder.nextDriverIndex++;
+          console.log(`[OrderController] Cập nhật nextDriverIndex thành ${currentOrder.nextDriverIndex} và chuyển sang tài xế tiếp theo cho đơn hàng ${orderId}`);
           this.sendOrderToNextDriver(orderId, io);
+        } else {
+          console.log(`[OrderController] Không cần chuyển tài xế tiếp theo vì đơn hàng ${orderId} đã được xử lý. process_status=${currentOrder?.process_status}, assignedDriverId=${currentOrder?.assignedDriverId}`);
         }
       }, 30000); // 30 giây
 
       return driver;
     } catch (error) {
-      console.error(`Lỗi khi gửi thông báo đơn hàng ${orderId} cho tài xế tiếp theo:`, error);
+      console.error(`[OrderController] Lỗi khi gửi thông báo đơn hàng ${orderId} cho tài xế tiếp theo:`, error);
       return null;
     }
   }
@@ -346,7 +391,6 @@ class OrderController {
       SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_status_updated', {
         orderId,
         processStatus: processStatus,
-        details: details || {},
         timestamp: new Date().toISOString()
       });
 
@@ -357,7 +401,6 @@ class OrderController {
           SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_status_updated', {
             orderId,
             processStatus: processStatus,
-            details: details || {},
             timestamp: new Date().toISOString()
           });
         }
@@ -386,6 +429,7 @@ class OrderController {
       if (!orderId) {
         throw new Error('orderId là bắt buộc');
       }
+      const order = await orderService.getOrderById(orderId, false);
 
       await orderService.completeOrder(orderId);
 
