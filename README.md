@@ -13,13 +13,16 @@ cd fastship-hu-socket
 ```
 
 2. Cài đặt các thư viện phụ thuộc:
-```bash
-npm install
-```
-
 3. Cấu hình biến môi trường:
-- Tạo file `.env` (hoặc sử dụng file có sẵn)
-- Cấu hình các thông số cần thiết:
+- Tạo file `.env` bằng lệnh sau trong terminal:
+  ```bash
+  touch .env
+  ```
+- Mở file `.env` để chỉnh sửa bằng lệnh:
+  ```bash
+  nano .env
+  ```
+- Cấu hình các thông số cần thiết trong file `.env`:
 ```
 PORT=3000
 ADMIN_KEY=admin_secret_key
@@ -27,13 +30,9 @@ ADMIN_KEY=admin_secret_key
 
 4. Khởi động server:
 ```bash
-npm start
+docker compose build; docker compose down -v; docker compose up -d
 ```
-
-Hoặc chạy trong chế độ phát triển:
-```bash
-npm run dev
-```
+ 
 
 ## Cấu trúc hệ thống
 
