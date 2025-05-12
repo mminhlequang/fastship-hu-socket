@@ -89,7 +89,7 @@ const setupSocketEvents = (io) => {
           // Thông báo kết nối thành công cho client
           SocketResponse.emitSuccess(socket, 'authentication_success', {
             driverId: socket.driverData.id,
-            profile: profileResponse.data,
+            profile: profileResponse.data.data,
             wallet: walletResponse.data
           });
 
@@ -162,7 +162,7 @@ const setupSocketEvents = (io) => {
           // Thông báo kết nối thành công cho client
           SocketResponse.emitSuccess(socket, 'authentication_success', {
             customerId: socket.customerData.customerId,
-            profile: profileResponse.data,
+            profile: profileResponse.data.data,
           });
 
           logEvent(`Xác thực thành công cho khách hàng: ${JSON.stringify(socket.customerData)}`);

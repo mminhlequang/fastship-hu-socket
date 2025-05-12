@@ -43,7 +43,7 @@ app.use('/api', apiRoutes);
 
 // Route cơ bản
 app.get('/', (req, res) => {
-  res.send('FastShip HU Socket.IO Server đang hoạt động!');
+  res.send('Localhost:3000!');
 });
 
 app.get('/logs/clear', (req, res) => {

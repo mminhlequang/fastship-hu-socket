@@ -17,6 +17,27 @@ const AppOrderProcessStatus = {
   CANCELLED: 'cancelled' // Đơn hàng đã hủy
 };
 
+
+/**
+ * Enum cho loại giao hàng của đơn hàng
+ */
+const AppOrderDeliveryType = {
+  SHIP: 'ship', // Giao hàng
+  PICKUP: 'pickup' // Món đặt lấy
+};
+
+/**
+ * Enum cho trạng thái của cửa hàng trong đơn hàng
+ */
+const AppOrderStoreStatus = {
+  PENDING: 'pending', // Đang chờ
+  // ACCEPTED: 'accepted', // Đã chấp nhận đơn
+  REJECTED: 'rejected', // Đã từ chối đơn
+  COMPLETED: 'completed' // Đã hoàn thành đơn
+};
+
+
+
 const FindDriverStatus = {
   FINDING: 'finding', // Đang tìm tài xế
   AVAILABLE_DRIVERS: 'availableDrivers', // Tài xế khả dụng
@@ -68,4 +89,4 @@ const MessageCodes = {
   CUSTOMER_NOT_AUTHORIZED: 'CUSTOMER_NOT_AUTHORIZED'
 };
 
-module.exports = { MessageCodes, AppOrderProcessStatus, FindDriverStatus, AppConfig }; 
+module.exports = { MessageCodes, AppOrderProcessStatus, AppOrderDeliveryType, AppOrderStoreStatus, FindDriverStatus, AppConfig }; 

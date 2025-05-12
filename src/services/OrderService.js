@@ -304,15 +304,15 @@ class OrderService {
   }
 
   // Cập nhật trạng thái đơn hàng
-  async updateOrderStatus (orderId, newStatus, driverId = null) {
+  async updateOrderStatus (orderId, processStatus, storeStatus = null, driverId = null, token = null) {
     const order = await this.getOrderById(orderId);
 
     if (!order) {
       throw new Error(`Đơn hàng không tồn tại: ${orderId}`);
     }
 
-    this.callApiUpdateOrder(orderId, newStatus, driverId, order.token);
-    return order.updateStatus(newStatus, driverId);
+    this.callApiUpdateOrder(orderId, processStatus, storeStatus, driverId, token || order.token);
+    return order.updateStatus(processStatus, storeStatus, driverId);
   }
 
   // Cập nhật trạng thái đơn hàng
@@ -402,21 +402,22 @@ class OrderService {
    * @param {string} token - Token xác thực của khách hàng
    * @returns {Promise<Object>} - Kết quả từ API
    */
-  async callApiUpdateOrder (orderId, processStatus, driverId = null, token) {
+  async callApiUpdateOrder (orderId, processStatus, storeStatus, driverId = null, token) {
     try {
       // Kiểm tra tham số đầu vào
       if (!orderId) {
         throw new Error('ID đơn hàng là bắt buộc');
       }
 
-      if (!processStatus) {
+      if (!processStatus && !storeStatus) {
         throw new Error('Trạng thái đơn hàng là bắt buộc');
       }
 
       // Chuẩn bị dữ liệu gửi đi
       const requestData = {
         id: orderId,
-        process_status: processStatus
+        process_status: processStatus,
+        store_status: storeStatus
       };
 
       // Thêm driver_id nếu có

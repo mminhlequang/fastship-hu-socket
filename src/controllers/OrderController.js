@@ -3,7 +3,7 @@ const driverService = require('../services/DriverService');
 const fs = require('fs');
 const path = require('path');
 const SocketResponse = require('../utils/SocketResponse');
-const { MessageCodes, AppOrderProcessStatus, FindDriverStatus } = require('../utils/Enums');
+const { MessageCodes, AppOrderProcessStatus, FindDriverStatus, AppOrderDeliveryType } = require('../utils/Enums');
 
 class OrderController {
   /**
@@ -27,17 +27,25 @@ class OrderController {
       // Tạo đơn hàng mới
       const order = await orderService.createOrder(data);
 
-      // Phản hồi cho người tạo đơn
-      SocketResponse.emitSuccess(socket, 'create_order_result', {
-        id: order.id,
-        process_status: AppOrderProcessStatus.FIND_DRIVER,
-        find_driver_status: FindDriverStatus.FINDING,
-      });
+      if (data.delivery_type == AppOrderDeliveryType.PICKUP) {
+        // Phản hồi cho người tạo đơn
+        SocketResponse.emitSuccess(socket, 'create_order_result', {
+          id: order.id,
+          process_status: AppOrderProcessStatus.STORE_ACCEPTED,
+        });
+      } else {
+        // Phản hồi cho người tạo đơn
+        SocketResponse.emitSuccess(socket, 'create_order_result', {
+          id: order.id,
+          process_status: AppOrderProcessStatus.FIND_DRIVER,
+          find_driver_status: FindDriverStatus.FINDING,
+        });
 
-      // Tự động tìm tài xế
-      this.findDriverForOrder(socket, order, io);
-
+        // Tự động tìm tài xế
+        this.findDriverForOrder(socket, order, io);
+      }
       return order;
+
     } catch (error) {
       console.error('Lỗi khi tạo đơn hàng:', error);
       SocketResponse.emitError(socket, 'error', MessageCodes.ORDER_CREATION_FAILED, {
@@ -276,7 +284,7 @@ class OrderController {
           const updatedOrder = await orderService.assignOrderToDriver(orderId, socket.driverData.id);
 
           // Cập nhật trạng thái đơn hàng
-          await orderService.updateOrderStatus(orderId, AppOrderProcessStatus.DRIVER_ACCEPTED, socket.driverData.id);
+          await orderService.updateOrderStatus(orderId, AppOrderProcessStatus.DRIVER_ACCEPTED, null, socket.driverData.id);
 
           // Thông báo cho tài xế
           SocketResponse.emitSuccess(socket, 'driver_new_order_response_confirmed', {
@@ -359,14 +367,14 @@ class OrderController {
    */
   async updateOrderStatus (socket, data, io) {
     try {
-      const { orderId, processStatus } = data;
+      const { orderId, processStatus, storeStatus } = data;
 
       if (!orderId) {
         throw new Error('orderId là bắt buộc');
       }
 
-      if (!processStatus) {
-        throw new Error('status là bắt buộc');
+      if (!processStatus && !storeStatus) {
+        throw new Error('processStatus hoặc storeStatus là bắt buộc');
       }
 
       // Lấy thông tin đơn hàng
@@ -376,13 +384,14 @@ class OrderController {
       }
 
       // Cập nhật trạng thái
-      const updatedStatus = await orderService.updateOrderStatus(orderId, processStatus);
+      const updatedStatus = await orderService.updateOrderStatus(orderId, processStatus, storeStatus, null, socket.accessToken);
 
       // Phản hồi cho người cập nhật
       SocketResponse.emitSuccess(socket, 'order_status_updated_confirmation', {
         status: 'success',
         orderId,
         processStatus: processStatus,
+        storeStatus: storeStatus,
         timestamp: new Date().toISOString()
       });
 
@@ -391,6 +400,7 @@ class OrderController {
       SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_status_updated', {
         orderId,
         processStatus: processStatus,
+        storeStatus: storeStatus,
         timestamp: new Date().toISOString()
       });
 
@@ -401,6 +411,7 @@ class OrderController {
           SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_status_updated', {
             orderId,
             processStatus: processStatus,
+            storeStatus: storeStatus,
             timestamp: new Date().toISOString()
           });
         }

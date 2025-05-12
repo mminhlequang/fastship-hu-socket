@@ -14,6 +14,8 @@ class Order {
     this.payment_type = orderData.payment_type;
     this.payment_status = orderData.payment_status;
     this.process_status = orderData.process_status;
+    this.store_status = orderData.store_status;
+    this.delivery_type = orderData.delivery_type;
     this.note = orderData.note;
     this.cancel_note = orderData.cancel_note;
 
@@ -73,13 +75,8 @@ class Order {
   }
 
   // Cập nhật trạng thái đơn hàng
-  updateStatus (newStatus, driverId = null) {
-    // Kiểm tra trạng thái hợp lệ
-    const validStatuses = [AppOrderProcessStatus.PENDING, AppOrderProcessStatus.FIND_DRIVER, AppOrderProcessStatus.DRIVER_ACCEPTED, AppOrderProcessStatus.STORE_ACCEPTED, AppOrderProcessStatus.DRIVER_ARRIVED_STORE, AppOrderProcessStatus.DRIVER_PICKED, AppOrderProcessStatus.DRIVER_ARRIVED_DESTINATION, AppOrderProcessStatus.COMPLETED, AppOrderProcessStatus.CANCELLED];
+  updateStatus (processStatus, storeStatus = null, driverId = null) {
 
-    if (!validStatuses.includes(newStatus)) {
-      throw new Error(`Trạng thái không hợp lệ: ${newStatus}`);
-    }
 
     // Lưu trạng thái cũ để kiểm tra logic chuyển đổi
     const oldStatus = this.process_status ?? AppOrderProcessStatus.PENDING;
@@ -90,7 +87,8 @@ class Order {
     // }
 
     // Cập nhật trạng thái
-    this.process_status = newStatus;
+    this.process_status = processStatus;
+    this.store_status = storeStatus;
     this.timestamps.updatedAt = new Date();
 
     if (driverId) {
@@ -98,7 +96,8 @@ class Order {
     }
 
     return {
-      status: newStatus,
+      process_status: processStatus,
+      store_status: storeStatus,
       timestamp: this.timestamps.updatedAt
     };
   }
