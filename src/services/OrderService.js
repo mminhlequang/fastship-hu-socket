@@ -1,5 +1,5 @@
 const Order = require('../models/Order');
-const { AppOrderProcessStatus, AppConfig } = require('../utils/Enums');
+const { AppOrderProcessStatus, AppConfig, AppOrderStoreStatus } = require('../utils/Enums');
 const driverService = require('./DriverService');
 const { v4: uuidv4 } = require('uuid');
 
@@ -417,7 +417,7 @@ class OrderService {
       const requestData = {
         id: orderId,
         process_status: processStatus,
-        store_status: storeStatus
+        store_status: processStatus == AppOrderProcessStatus.DRIVER_ACCEPTED ? AppOrderStoreStatus.PENDING : processStatus == AppOrderProcessStatus.COMPLETED ? AppOrderStoreStatus.COMPLETED : processStatus == AppOrderProcessStatus.CANCELLED ? AppOrderStoreStatus.CANCELLED : storeStatus
       };
 
       // Thêm driver_id nếu có

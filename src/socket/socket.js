@@ -101,6 +101,13 @@ const setupSocketEvents = (io) => {
             console.log('activeOrder', activeOrder);
             if (activeOrder) {
               logEvent(`Tài xế ${socket.driverData.id} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
+
+              const orderRoom = `order_${activeOrder.id}`;
+              socket.join(orderRoom);
+              socket.driverData.activeOrderId = activeOrder.id;
+              logEvent(`Tài xế ${socket.id} đã tham gia room đơn hàng ${orderRoom}`);
+
+
               SocketResponse.emitSuccess(socket, 'current_order_info', {
                 order: activeOrder.getOrderData(),
                 process_status: activeOrder.process_status,

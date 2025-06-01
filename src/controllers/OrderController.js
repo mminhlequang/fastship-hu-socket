@@ -196,7 +196,7 @@ class OrderController {
       console.log(`[OrderController] Gửi thông báo đơn hàng ${orderId} đến tài xế ${driver.driverData.id} với socketId ${driver.socketId}`);
       SocketResponse.emitSuccessToRoom(io, driver.socketId, 'driver_new_order_request', {
         order: order.getOrderData(),
-        responseTimeout: 300, // Thời gian chờ phản hồi (giây)
+        responseTimeout: 30, // Thời gian chờ phản hồi (giây)
         timestamp: new Date().toISOString()
       });
 
