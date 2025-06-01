@@ -125,9 +125,9 @@ class DriverController {
       // Cập nhật vị trí
       const location = driverService.updateDriverLocation(driver.driverData.id, latitude, longitude);
 
-      console.log(`driver_${driver.driverData.id}`);
       // Phát sóng vị trí mới đến kênh cụ thể của tài xế
       // Những client đang nghe kênh này sẽ nhận được cập nhật vị trí mới
+      SocketResponse.emitSuccessToRoom
       SocketResponse.emitToRoom(socket.server, `driver_${driver.driverData.id}`, `driver_${driver.driverData.id}`, true, MessageCodes.SUCCESS, {
         type: 'location_update',
         driver: {

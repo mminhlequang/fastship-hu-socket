@@ -107,8 +107,7 @@ class OrderController {
         drivers: result.driversList
       });
 
-      // Bắt đầu gửi thông báo cho tài xế đầu tiên
-      console.log(`[OrderController] Bắt đầu gửi thông báo cho tài xế đầu tiên, đơn hàng ${order.id}`);
+      // Bắt đầu gửi thông báo cho tài xế  
       this.sendOrderToNextDriver(order.id, io);
 
       return order;

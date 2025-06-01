@@ -184,7 +184,6 @@ const setupSocketEvents = (io) => {
     // Cập nhật vị trí tài xế
     socket.on('driver_update_location', async (data) => {
       try {
-        logEvent(`Cập nhật vị trí tài xế ${socket.id}: ${data}`);
         const location = await driverController.handleUpdateLocation(socket, data);
         // Cập nhật thời gian hoạt động cuối cùng
         socket.lastActive = new Date();
@@ -193,6 +192,17 @@ const setupSocketEvents = (io) => {
         SocketResponse.emitSuccess(socket, 'location_updated', {
           location
         });
+
+        // Broadcast vị trí tài xế đến room đơn hàng nếu tài xế đang thực hiện đơn
+        if (socket.driverData && socket.driverData.activeOrderId) {
+          const orderRoom = `order_${socket.driverData.activeOrderId}`;
+          io.to(orderRoom).emit('driver_location_update', {
+            orderId: socket.driverData.activeOrderId,
+            driverId: socket.driverData.id,
+            location: location,
+            timestamp: new Date().toISOString()
+          });
+        }
       } catch (error) {
         logEvent(`Lỗi khi cập nhật vị trí tài xế ${socket.id}: ${error.message}`);
         SocketResponse.emitError(socket, 'error', MessageCodes.LOCATION_INVALID, {
@@ -232,14 +242,28 @@ const setupSocketEvents = (io) => {
     // Tạo đơn hàng mới
     socket.on('create_order', async (data) => {
       logEvent(`Yêu cầu tạo đơn hàng mới từ ${socket.id}: OrderId: ${data.id}`);
+
+      // Khách hàng join vào room đơn hàng
+      const orderRoom = `order_${data.id}`;
+      socket.join(orderRoom);
+      logEvent(`Khách hàng ${socket.id} đã tham gia room đơn hàng ${orderRoom}`);
+
       orderController.handleCreateOrder(socket, data, io);
     });
-
 
     // Phản hồi tài xế về đơn hàng
     socket.on('driver_new_order_response', async (data) => {
       try {
         logEvent(`Phản hồi đơn hàng ${data.orderId} từ tài xế ${socket.id}: ${data.status}`);
+
+        // Tài xế join vào room đơn hàng khi nhận đơn
+        if (data.status === 'accepted') {
+          const orderRoom = `order_${data.orderId}`;
+          socket.join(orderRoom);
+          socket.driverData.activeOrderId = data.orderId;
+          logEvent(`Tài xế ${socket.id} đã tham gia room đơn hàng ${orderRoom}`);
+        }
+
         await orderController.handleDriverResponse(socket, data, io);
       } catch (error) {
         logEvent(`Lỗi khi xử lý phản hồi tài xế: ${error.message}`);
