@@ -483,12 +483,43 @@ class OrderController {
 
       const order = await orderService.getOrderById(orderId);
 
+      // Xác định ai là người hủy đơn hàng
+      let cancelledBy = {
+        type: 'unknown',
+        id: null,
+        name: null
+      };
+
+      if (socket.driverData) {
+        // Tài xế hủy đơn
+        cancelledBy = {
+          type: 'driver',
+          id: socket.driverData.id,
+          name: socket.driverData.profile?.name || 'Driver'
+        };
+      } else if (socket.customerData) {
+        // Khách hàng hủy đơn
+        cancelledBy = {
+          type: 'customer',
+          id: socket.customerData.id,
+          name: socket.customerData.profile?.name || 'Customer'
+        };
+      } else if (socket.accessToken) {
+        // Cửa hàng/Admin hủy đơn
+        cancelledBy = {
+          type: 'store',
+          id: null,
+          name: 'Store'
+        };
+      }
+
       await orderService.cancelOrder(orderId, reason || 'Không có lý do');
 
       // Phản hồi cho người hủy
       SocketResponse.emitSuccess(socket, 'order_cancelled_confirmation', {
         status: 'success',
         orderId,
+        cancelledBy,
         timestamp: new Date().toISOString()
       });
 
@@ -497,6 +528,7 @@ class OrderController {
       SocketResponse.emitSuccessToRoom(io, `customer_${order.customer.id}`, 'order_cancelled', {
         orderId,
         reason: reason || 'Không có lý do',
+        cancelledBy,
         timestamp: new Date().toISOString()
       });
 
@@ -507,6 +539,7 @@ class OrderController {
           SocketResponse.emitSuccessToRoom(io, driver.socketId, 'order_cancelled', {
             orderId,
             reason: reason || 'Không có lý do',
+            cancelledBy,
             timestamp: new Date().toISOString()
           });
         }
