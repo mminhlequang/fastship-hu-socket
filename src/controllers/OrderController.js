@@ -206,6 +206,9 @@ class OrderController {
 
         // Kiểm tra lại xem đơn hàng có còn pending và chưa được gán không
         const currentOrder = await orderService.getOrderById(orderId);
+
+        console.log(`[OrderController] Kiểm tra trạng thái đơn hàng ${orderId}: process_status=${currentOrder?.process_status}, assignedDriverId=${currentOrder?.assignedDriverId}`);
+
         if (currentOrder && (currentOrder.process_status == null || currentOrder.process_status !== AppOrderProcessStatus.PENDING) && !currentOrder.assignedDriverId) {
           // Nếu tài xế hiện tại chưa phản hồi, chuyển sang tài xế tiếp theo
           const hasRejectedAfterTimeout = await orderService.hasDriverRejected(orderId, driver.driverData.id);
