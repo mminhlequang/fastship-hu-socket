@@ -207,9 +207,7 @@ class OrderController {
         // Kiểm tra lại xem đơn hàng có còn pending và chưa được gán không
         const currentOrder = await orderService.getOrderById(orderId);
 
-        console.log(`[OrderController] Kiểm tra trạng thái đơn hàng ${orderId}: process_status=${currentOrder?.process_status}, assignedDriverId=${currentOrder?.assignedDriverId}`);
-
-        if (currentOrder && (currentOrder.process_status == null || currentOrder.process_status !== AppOrderProcessStatus.PENDING) && !currentOrder.assignedDriverId) {
+        if (currentOrder && (currentOrder.process_status == null || currentOrder.process_status == AppOrderProcessStatus.PENDING || currentOrder.process_status == AppOrderProcessStatus.FIND_DRIVER) && !currentOrder.assignedDriverId) {
           // Nếu tài xế hiện tại chưa phản hồi, chuyển sang tài xế tiếp theo
           const hasRejectedAfterTimeout = await orderService.hasDriverRejected(orderId, driver.driverData.id);
           console.log(`[OrderController] Timeout check: tài xế ${driver.driverData.id} đã từ chối đơn hàng ${orderId}: ${hasRejectedAfterTimeout}`);
@@ -342,7 +340,7 @@ class OrderController {
         });
 
         // Tự động chuyển sang tài xế tiếp theo
-        if ((order.process_status == null || order.process_status !== AppOrderProcessStatus.PENDING) && !order.assignedDriverId) {
+        if ((order.process_status == null || order.process_status == AppOrderProcessStatus.PENDING || order.process_status == AppOrderProcessStatus.FIND_DRIVER) && !order.assignedDriverId) {
           // Tăng chỉ số và gửi cho tài xế tiếp theo
           order.nextDriverIndex++;
           setTimeout(() => {
