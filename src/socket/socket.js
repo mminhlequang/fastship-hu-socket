@@ -34,159 +34,117 @@ const setupSocketEvents = (io) => {
   io.engine.pingTimeout = 10000; // 10 giây
   io.engine.pingInterval = 5000; // 5 giây
 
+  // Middleware xác thực handshake
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token;
+      const userType = socket.handshake.auth.userType; // 'driver' hoặc 'customer'
+
+      if (!token) {
+        throw new Error('Không có token xác thực');
+      }
+
+      if (!userType || !['driver', 'customer', 'store'].includes(userType)) {
+        throw new Error('Loại người dùng không hợp lệ');
+      }
+
+      logEvent(`Xác thực ${userType}: ${socket.id} - token: ${token.substring(0, 10)}...`);
+
+      // Lưu token vào socket để sử dụng sau này
+      socket.accessToken = token;
+      socket.userType = userType;
+
+      // Lấy thông tin người dùng từ API
+      const profileResponse = await axios.get(`${AppConfig.HOST_API}/profile`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'accept': '*/*'
+        }
+      });
+
+      if (profileResponse.data.status !== true) {
+        throw new Error('Token không hợp lệ');
+      }
+
+      // Lưu thông tin người dùng vào socket
+      if (userType === 'driver') {
+        const walletResponse = await axios.get(`${AppConfig.HOST_API}/transaction/get_my_wallet?currency=eur`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'accept': '*/*'
+          }
+        });
+
+        if (walletResponse.data.status !== true) {
+          throw new Error('Không thể lấy thông tin ví');
+        }
+
+        socket.driverData = {
+          profile: profileResponse.data.data,
+          wallet: walletResponse.data.data,
+          id: profileResponse.data.data.id
+        };
+
+        // Đăng ký tài xế với hệ thống
+        await driverController.handleDriverConnect(socket);
+      } else {
+        socket.customerData = {
+          customerId: profileResponse.data.data.id,
+          profile: profileResponse.data.data
+        };
+      }
+
+      next();
+    } catch (error) {
+      logEvent(`Lỗi xác thực handshake: ${error.message}`);
+      next(new Error('Xác thực thất bại: ' + error.message));
+    }
+  });
+
   // Xử lý kết nối mới
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     connectionCount++;
     logEvent(`Đã kết nối Socket: ${socket.id} (Tổng số kết nối: ${connectionCount})`);
 
     // Lưu thời gian kết nối
     socket.connectionTime = new Date();
 
-    // Xác thực tài xế bằng accessToken
-    socket.on('authenticate_driver', async (data) => {
-      try {
-        if (!data.token) {
-          throw new Error('Không có token xác thực');
+    // Thông báo kết nối thành công cho client
+    if (socket.userType === 'driver') {
+      SocketResponse.emitSuccess(socket, 'authentication_success', {
+        driverId: socket.driverData.id,
+        profile: socket.driverData.profile,
+        wallet: socket.driverData.wallet
+      });
+
+      logEvent(`Xác thực thành công cho tài xế: ${JSON.stringify(socket.driverData)}`);
+
+      // Kiểm tra và gửi thông tin đơn hàng hiện tại nếu có
+      if (socket.driverData && socket.driverData.id) {
+        const activeOrder = await orderService.getActiveOrderByDriverUid(socket.driverData.id);
+        if (activeOrder) {
+          logEvent(`Tài xế ${socket.driverData.id} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
+
+          const orderRoom = `order_${activeOrder.id}`;
+          socket.join(orderRoom);
+          socket.driverData.activeOrderId = activeOrder.id;
+          logEvent(`Tài xế ${socket.id} đã tham gia room đơn hàng ${orderRoom}`);
+
+          SocketResponse.emitSuccess(socket, 'current_order_info', {
+            order: activeOrder.getOrderData(),
+            process_status: activeOrder.process_status,
+            timestamp: new Date().toISOString()
+          });
         }
-
-        logEvent(`Xác thực tài xế: ${socket.id} - token: ${data.token.substring(0, 10)}...`);
-
-        // Lưu token vào socket để sử dụng sau này
-        socket.accessToken = data.token;
-
-        // Lấy thông tin tài xế từ API
-        try {
-          const profileResponse = await axios.get(`${AppConfig.HOST_API}/profile`, {
-            headers: {
-              'Authorization': `Bearer ${data.token}`,
-              'X-CSRF-TOKEN': '',
-              'accept': '*/*'
-            }
-          });
-
-          const walletResponse = await axios.get(`${AppConfig.HOST_API}/transaction/get_my_wallet?currency=eur`, {
-            headers: {
-              'Authorization': `Bearer ${data.token}`,
-              'X-CSRF-TOKEN': '',
-              'accept': '*/*'
-            }
-          });
-
-          if (profileResponse.data.status != true && walletResponse.data.status != true) {
-            throw new Error('Không có token xác thực');
-          }
-
-          // Lưu thông tin driver vào socket
-          socket.driverData = {
-            profile: profileResponse.data.data,
-            wallet: walletResponse.data.data,
-            id: profileResponse.data.data.id
-          };
-
-          // Đăng ký tài xế với hệ thống
-          await driverController.handleDriverConnect(socket);
-
-          // Thông báo kết nối thành công cho client
-          SocketResponse.emitSuccess(socket, 'authentication_success', {
-            driverId: socket.driverData.id,
-            profile: profileResponse.data.data,
-            wallet: walletResponse.data
-          });
-
-          logEvent(`Xác thực thành công cho tài xế: ${JSON.stringify(socket.driverData)}`);
-
-          // Kiểm tra và gửi thông tin đơn hàng hiện tại nếu có
-          if (socket.driverData && socket.driverData.id) {
-            const activeOrder = await orderService.getActiveOrderByDriverUid(socket.driverData.id);
-            console.log('activeOrder', activeOrder);
-            if (activeOrder) {
-              logEvent(`Tài xế ${socket.driverData.id} reconnect với đơn hàng đang hoạt động: ${activeOrder.id}`);
-
-              const orderRoom = `order_${activeOrder.id}`;
-              socket.join(orderRoom);
-              socket.driverData.activeOrderId = activeOrder.id;
-              logEvent(`Tài xế ${socket.id} đã tham gia room đơn hàng ${orderRoom}`);
-
-
-              SocketResponse.emitSuccess(socket, 'current_order_info', {
-                order: activeOrder.getOrderData(),
-                process_status: activeOrder.process_status,
-                timestamp: new Date().toISOString()
-              });
-            }
-          }
-
-        } catch (apiError) {
-          logEvent(`Lỗi khi gọi API: ${apiError.message}`);
-          SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
-            message: 'Lỗi khi xác thực với API: ' + apiError.message
-          });
-          throw apiError;
-        }
-      } catch (error) {
-        logEvent(`Lỗi khi xác thực tài xế: ${error.message}`);
-        SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
-          message: 'Lỗi khi xác thực: ' + error.message
-        });
       }
-    });
+    } else {
+      SocketResponse.emitSuccess(socket, 'authentication_success', {
+        customerId: socket.customerData.customerId,
+        profile: socket.customerData.profile,
+      });
 
-    // Xác thực khách hàng
-    socket.on('authenticate_customer', async (data) => {
-      try {
-        if (!data.token) {
-          throw new Error('Không có token xác thực');
-        }
-
-        logEvent(`Xác thực khách hàng: ${socket.id} - token: ${data.token.substring(0, 10)}...`);
-
-        // Lưu token vào socket để sử dụng sau này
-        socket.accessToken = data.token;
-
-        // Lấy thông tin tài xế từ API
-        try {
-          const profileResponse = await axios.get(`${AppConfig.HOST_API}/profile`, {
-            headers: {
-              'Authorization': `Bearer ${data.token}`,
-              'X-CSRF-TOKEN': '',
-              'accept': '*/*'
-            }
-          });
-
-          if (profileResponse.data.status != true) {
-            throw new Error('Không có token xác thực');
-          }
-
-          // Lưu thông tin driver vào socket
-          socket.customerData = {
-            customerId: profileResponse.data.data.id,
-            profile: profileResponse.data.data
-          };
-
-          // Đăng ký khách hàng với hệ thống
-          // await customerController.handleCustomerConnect(socket);
-
-          // Thông báo kết nối thành công cho client
-          SocketResponse.emitSuccess(socket, 'authentication_success', {
-            customerId: socket.customerData.customerId,
-            profile: profileResponse.data.data,
-          });
-
-          logEvent(`Xác thực thành công cho khách hàng: ${JSON.stringify(socket.customerData)}`);
-        } catch (apiError) {
-          logEvent(`Lỗi khi gọi API: ${apiError.message}`);
-          SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
-            message: 'Lỗi khi xác thực với API: ' + apiError.message
-          });
-          throw apiError;
-        }
-      } catch (error) {
-        logEvent(`Lỗi khi xác thực khách hàng: ${error.message}`);
-        SocketResponse.emitError(socket, 'authentication_error', MessageCodes.AUTH_FAILED, {
-          message: 'Lỗi khi xác thực: ' + error.message
-        });
-      }
-    });
+      logEvent(`Xác thực thành công cho khách hàng: ${JSON.stringify(socket.customerData)}`);
+    }
 
     // Cập nhật vị trí tài xế
     socket.on('driver_update_location', async (data) => {
