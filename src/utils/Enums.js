@@ -1,5 +1,5 @@
 const AppConfig = {
-  HOST_API: 'https://zennail23.com/api/v1'
+  HOST_API: 'https://fastshiphu.com/api/v1'
 }
 
 /**
